@@ -34,7 +34,8 @@ from skill_framework import skill, SkillParameter, SkillInput, SkillOutput
         ),
         SkillParameter(
             name="start_date",
-            description="Start date for training data (YYYY-MM-DD)"
+            description="Start date for training data (YYYY-MM-DD)",
+            default_value="2022-01-01"
         ),
         SkillParameter(
             name="other_filters",
@@ -79,6 +80,9 @@ def run_forecast_analysis(parameters: SkillInput) -> SkillOutput:
     Main forecast analysis logic
     """
     try:
+        print(f"DEBUG: Starting forecast analysis")
+        print(f"DEBUG: Raw parameters.arguments: {parameters.arguments}")
+
         # Extract parameters
         context = parameters.context
         metric = parameters.arguments.get('metric')
@@ -87,13 +91,32 @@ def run_forecast_analysis(parameters: SkillInput) -> SkillOutput:
         other_filters = parameters.arguments.get('other_filters', [])
         confidence_level = parameters.arguments.get('confidence_level', 0.95)
 
+        print(f"DEBUG: Extracted parameters:")
+        print(f"  - metric: {metric} (type: {type(metric)})")
+        print(f"  - forecast_steps: {forecast_steps} (type: {type(forecast_steps)})")
+        print(f"  - start_date: {start_date} (type: {type(start_date)})")
+        print(f"  - other_filters: {other_filters} (type: {type(other_filters)})")
+        print(f"  - confidence_level: {confidence_level} (type: {type(confidence_level)})")
+
+        # Convert string parameters to proper types if needed
+        if isinstance(forecast_steps, str):
+            forecast_steps = int(forecast_steps)
+            print(f"DEBUG: Converted forecast_steps to int: {forecast_steps}")
+
+        if isinstance(confidence_level, str):
+            confidence_level = float(confidence_level)
+            print(f"DEBUG: Converted confidence_level to float: {confidence_level}")
+
         # Validate inputs
+        print(f"DEBUG: Validating forecast_steps: {forecast_steps}")
         if forecast_steps < 1 or forecast_steps > 36:
+            print(f"DEBUG: Validation failed - forecast_steps out of range")
             return SkillOutput(
                 final_prompt="Invalid forecast steps. Please specify between 1 and 36 months.",
                 warnings=["Forecast steps must be between 1 and 36 months"]
             )
 
+        print(f"DEBUG: Calling fetch_data with metric={metric}, start_date={start_date}")
         # Get data from context
         data_df = fetch_data(context, metric, start_date, other_filters)
 
@@ -153,30 +176,50 @@ def fetch_data(context, metric, start_date, other_filters):
     """
     Fetch data from the context
     """
+    print(f"DEBUG: fetch_data called with metric={metric}, start_date={start_date}, filters={other_filters}")
+
     # Use AnswerRocket context to get data
     query = context.query_builder()
+    print(f"DEBUG: Created query builder")
+
     query.select_metric(metric)
+    print(f"DEBUG: Selected metric: {metric}")
 
     # Apply other filters (standard filter bucket)
     for filter_item in other_filters:
+        print(f"DEBUG: Applying filter: {filter_item}")
         query.apply_filter(filter_item)
 
     if start_date:
+        print(f"DEBUG: Applying date filter: {start_date}")
         query.filter_by_date(start_date)
 
+    print(f"DEBUG: Executing query...")
     raw_df = query.execute()
+    print(f"DEBUG: Query executed, got data shape: {raw_df.shape if raw_df is not None else 'None'}")
 
-    # Standardize column names - AR returns metric name and max_time_month
     if raw_df is not None and not raw_df.empty:
-        # Rename columns to standard format
+        print(f"DEBUG: Raw data columns: {list(raw_df.columns)}")
+        print(f"DEBUG: Raw data head:\n{raw_df.head()}")
+
+        # Standardize column names - AR returns metric name and max_time_month
         if 'max_time_month' in raw_df.columns:
             raw_df = raw_df.rename(columns={'max_time_month': 'period'})
+            print(f"DEBUG: Renamed max_time_month to period")
         if metric in raw_df.columns:
             raw_df = raw_df.rename(columns={metric: 'value'})
+            print(f"DEBUG: Renamed {metric} to value")
         elif 'sales' in raw_df.columns:  # fallback
             raw_df = raw_df.rename(columns={'sales': 'value'})
+            print(f"DEBUG: Renamed sales to value (fallback)")
         elif 'volume' in raw_df.columns:  # fallback for volume
             raw_df = raw_df.rename(columns={'volume': 'value'})
+            print(f"DEBUG: Renamed volume to value (fallback)")
+
+        print(f"DEBUG: Final data columns: {list(raw_df.columns)}")
+        print(f"DEBUG: Final data shape: {raw_df.shape}")
+    else:
+        print(f"DEBUG: No data returned from query")
 
     return raw_df
 
