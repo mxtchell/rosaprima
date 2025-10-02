@@ -11,12 +11,15 @@ warnings.filterwarnings('ignore')
 
 from skill_builder import skill, SkillOutput, ExportData, InputParam, SkillInput
 
-# Check if running on AnswerRocket platform
-AR_IS_RUNNING_ON_FLEET = os.getenv("AR_IS_RUNNING_ON_FLEET", "false").lower() == "true"
 
 @skill(
     name="forecast_analysis",
-    description="Generate intelligent forecasts using best-fit model selection",
+    llm_name="forecast_analysis",
+    description="Generate intelligent forecasts using best-fit model selection with automatic model optimization",
+    capabilities="Provides multi-model forecasting with automatic selection of best-performing algorithm. Supports linear regression, moving average, and other forecasting models. Generates confidence intervals, trend analysis, and seasonality detection. Creates professional visualizations with KPIs, charts, and insights.",
+    limitations="Requires minimum 12 historical data points. Limited to 36 months forecast horizon. Assumes monthly granularity (max_time_month). Performance depends on data quality and historical patterns.",
+    example_questions="What will sales be over the next 6 months? Can you forecast volume for Q1 2024? Show me a 12-month revenue projection with confidence intervals. What's the expected growth trend for the next quarter?",
+    parameter_guidance="Select metric to forecast (sales, volume, etc.). Choose forecast steps (1-36 months, default 6). Optionally filter by date range or apply dimensional filters. The skill automatically selects the best forecasting model based on historical performance.",
     parameters=[
         InputParam(
             name="metric",
@@ -138,42 +141,32 @@ def fetch_data(context, metric, start_date, other_filters):
     """
     Fetch data from the context
     """
-    if AR_IS_RUNNING_ON_FLEET:
-        # Use AnswerRocket context to get data
-        query = context.query_builder()
-        query.select_metric(metric)
+    # Use AnswerRocket context to get data
+    query = context.query_builder()
+    query.select_metric(metric)
 
-        # Apply other filters (standard filter bucket)
-        for filter_item in other_filters:
-            query.apply_filter(filter_item)
+    # Apply other filters (standard filter bucket)
+    for filter_item in other_filters:
+        query.apply_filter(filter_item)
 
-        if start_date:
-            query.filter_by_date(start_date)
+    if start_date:
+        query.filter_by_date(start_date)
 
-        raw_df = query.execute()
+    raw_df = query.execute()
 
-        # Standardize column names - AR returns metric name and max_time_month
-        if raw_df is not None and not raw_df.empty:
-            # Rename columns to standard format
-            if 'max_time_month' in raw_df.columns:
-                raw_df = raw_df.rename(columns={'max_time_month': 'period'})
-            if metric in raw_df.columns:
-                raw_df = raw_df.rename(columns={metric: 'value'})
-            elif 'sales' in raw_df.columns:  # fallback
-                raw_df = raw_df.rename(columns={'sales': 'value'})
-            elif 'volume' in raw_df.columns:  # fallback for volume
-                raw_df = raw_df.rename(columns={'volume': 'value'})
+    # Standardize column names - AR returns metric name and max_time_month
+    if raw_df is not None and not raw_df.empty:
+        # Rename columns to standard format
+        if 'max_time_month' in raw_df.columns:
+            raw_df = raw_df.rename(columns={'max_time_month': 'period'})
+        if metric in raw_df.columns:
+            raw_df = raw_df.rename(columns={metric: 'value'})
+        elif 'sales' in raw_df.columns:  # fallback
+            raw_df = raw_df.rename(columns={'sales': 'value'})
+        elif 'volume' in raw_df.columns:  # fallback for volume
+            raw_df = raw_df.rename(columns={'volume': 'value'})
 
-        return raw_df
-    else:
-        # For local testing - generate sample data
-        periods = pd.date_range(start='2022-01-01', periods=36, freq='M')
-        values = 100000 + np.random.randn(36) * 10000 + np.arange(36) * 1000
-
-        return pd.DataFrame({
-            'period': periods,
-            'value': values
-        })
+    return raw_df
 
 def analyze_patterns(df):
     """
