@@ -11,6 +11,10 @@ import warnings
 warnings.filterwarnings('ignore')
 
 from skill_framework import skill, SkillParameter, SkillInput, SkillOutput
+from answer_rocket import AnswerRocketClient
+
+# Get DATABASE_ID from environment or use default
+DATABASE_ID = os.getenv("ANSWERROCKET_DATASET_ID", "7a30e8fc-e7aa-4829-9020-fa94572244da")
 
 
 @skill(
