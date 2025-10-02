@@ -18,7 +18,7 @@ from skill_framework import skill, SkillParameter, SkillInput, SkillOutput
     llm_name="forecast_analysis",
     description="Generate intelligent forecasts using best-fit model selection with automatic model optimization",
     capabilities="Provides multi-model forecasting with automatic selection of best-performing algorithm. Supports linear regression, moving average, and other forecasting models. Generates confidence intervals, trend analysis, and seasonality detection. Creates professional visualizations with KPIs, charts, and insights.",
-    limitations="Requires minimum 12 historical data points. Limited to 36 months forecast horizon. Assumes monthly granularity (max_time_month). Performance depends on data quality and historical patterns.",
+    limitations="Requires minimum 12 historical data points. Limited to 36 months forecast horizon. Assumes monthly granularity (month_new). Performance depends on data quality and historical patterns.",
     example_questions="What will sales be over the next 6 months? Can you forecast volume for Q1 2024? Show me a 12-month revenue projection with confidence intervals. What's the expected growth trend for the next quarter?",
     parameter_guidance="Select metric to forecast (sales, volume, etc.). Choose forecast steps (1-36 months, default 6). Optionally filter by date range or apply dimensional filters. The skill automatically selects the best forecasting model based on historical performance.",
     parameters=[
