@@ -11,6 +11,10 @@ import warnings
 warnings.filterwarnings('ignore')
 
 from skill_framework import skill, SkillParameter, SkillInput, SkillOutput
+from answer_rocket import AnswerRocketClient
+
+# Get DATABASE_ID from environment or use default
+DATABASE_ID = os.getenv("ANSWERROCKET_DATASET_ID", "7a30e8fc-e7aa-4829-9020-fa94572244da")
 
 
 @skill(
@@ -191,6 +195,10 @@ def fetch_data(context, metric, start_date, other_filters):
     """
     print(f"DEBUG: fetch_data called with metric={metric}, start_date={start_date}, filters={other_filters}")
 
+    # Create AnswerRocket client
+    arc = AnswerRocketClient()
+    print(f"DEBUG: Created AnswerRocketClient")
+
     # Build SQL query to get time series data for forecasting
     sql_query = f"""
     SELECT
@@ -206,15 +214,16 @@ def fetch_data(context, metric, start_date, other_filters):
         print(f"DEBUG: Added date filter: {start_date}")
 
     # Add other filters
-    for filter_item in other_filters:
-        if isinstance(filter_item, dict):
-            for key, value in filter_item.items():
-                if isinstance(value, list):
-                    values_str = "', '".join(str(v) for v in value)
-                    sql_query += f" AND {key} IN ('{values_str}')"
-                else:
-                    sql_query += f" AND {key} = '{value}'"
-                print(f"DEBUG: Added filter: {key} = {value}")
+    if other_filters:
+        for filter_item in other_filters:
+            if isinstance(filter_item, dict):
+                for key, value in filter_item.items():
+                    if isinstance(value, list):
+                        values_str = "', '".join(str(v) for v in value)
+                        sql_query += f" AND {key} IN ('{values_str}')"
+                    else:
+                        sql_query += f" AND {key} = '{value}'"
+                    print(f"DEBUG: Added filter: {key} = {value}")
 
     sql_query += f"""
     GROUP BY max_time_month
@@ -222,18 +231,20 @@ def fetch_data(context, metric, start_date, other_filters):
     """
 
     print(f"DEBUG: Executing SQL query:\n{sql_query}")
+    print(f"DEBUG: DATABASE_ID: {DATABASE_ID}")
 
     try:
-        print(f"DEBUG: About to execute SQL on context")
-        print(f"DEBUG: Context has execute_sql method: {hasattr(context, 'execute_sql')}")
+        # Execute SQL query using AnswerRocketClient
+        result = arc.data.execute_sql_query(DATABASE_ID, sql_query, 1000)
+        print(f"DEBUG: SQL execution result - success: {result.success if hasattr(result, 'success') else 'No success attr'}")
 
-        if hasattr(context, 'execute_sql'):
-            # Execute SQL query using context
-            raw_df = context.execute_sql(sql_query)
+        if hasattr(result, 'success') and result.success and hasattr(result, 'df'):
+            raw_df = result.df
             print(f"DEBUG: SQL executed successfully, got shape: {raw_df.shape if raw_df is not None else 'None'}")
         else:
-            print(f"DEBUG: Context does not have execute_sql method")
-            print(f"DEBUG: Available context methods: {[m for m in dir(context) if not m.startswith('_')]}")
+            print(f"DEBUG: SQL execution failed or no data")
+            if hasattr(result, 'error'):
+                print(f"DEBUG: Error: {result.error}")
             return None
 
         if raw_df is not None and not raw_df.empty:
