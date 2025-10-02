@@ -183,7 +183,7 @@ def fetch_data(context, metric, start_date, other_filters):
     SELECT
         max_time_month,
         SUM({metric}) as {metric}
-    FROM fact_table
+    FROM read_csv('pasta_2025.csv')
     WHERE 1=1
     """
 
