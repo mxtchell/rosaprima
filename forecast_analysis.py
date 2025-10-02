@@ -225,23 +225,17 @@ def fetch_data(metric, start_date, other_filters):
         # Execute SQL query using AnswerRocketClient
         print(f"DEBUG: About to execute SQL using AnswerRocketClient")
 
-        if hasattr(arc, 'data'):
-            result = context.sql(sql_query)
-            print(f"DEBUG: SQL executed using context.sql()")
-        elif hasattr(context, 'execute_sql'):
-            result = context.execute_sql(sql_query)
-            print(f"DEBUG: SQL executed using context.execute_sql()")
-        else:
-            print(f"DEBUG: Context methods available: {[m for m in dir(context) if not m.startswith('_')]}")
-            return None
+        # Execute SQL query using AnswerRocketClient
+        result = arc.data.execute_sql_query(DATABASE_ID, sql_query, 1000)
+        print(f"DEBUG: SQL execution result - success: {result.success if hasattr(result, 'success') else 'No success attr'}")
 
-        print(f"DEBUG: SQL result type: {type(result)}")
-
-        if result is not None:
-            raw_df = result
-            print(f"DEBUG: Got result, shape: {raw_df.shape if hasattr(raw_df, 'shape') else 'No shape'}")
+        if hasattr(result, 'success') and result.success and hasattr(result, 'df'):
+            raw_df = result.df
+            print(f"DEBUG: SQL executed successfully, got shape: {raw_df.shape if raw_df is not None else 'None'}")
         else:
-            print(f"DEBUG: SQL returned None")
+            print(f"DEBUG: SQL execution failed or no data")
+            if hasattr(result, 'error'):
+                print(f"DEBUG: Error: {result.error}")
             return None
 
         if raw_df is not None and not raw_df.empty:
