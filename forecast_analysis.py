@@ -174,54 +174,70 @@ def run_forecast_analysis(parameters: SkillInput) -> SkillOutput:
 
 def fetch_data(context, metric, start_date, other_filters):
     """
-    Fetch data from the context
+    Fetch data using SQL query like price variance skill
     """
     print(f"DEBUG: fetch_data called with metric={metric}, start_date={start_date}, filters={other_filters}")
 
-    # Use AnswerRocket context to get data
-    query = context.query_builder()
-    print(f"DEBUG: Created query builder")
+    # Build SQL query to get time series data for forecasting
+    sql_query = f"""
+    SELECT
+        max_time_month,
+        SUM({metric}) as {metric}
+    FROM fact_table
+    WHERE 1=1
+    """
 
-    query.select_metric(metric)
-    print(f"DEBUG: Selected metric: {metric}")
-
-    # Apply other filters (standard filter bucket)
-    for filter_item in other_filters:
-        print(f"DEBUG: Applying filter: {filter_item}")
-        query.apply_filter(filter_item)
-
+    # Add date filter if provided
     if start_date:
-        print(f"DEBUG: Applying date filter: {start_date}")
-        query.filter_by_date(start_date)
+        sql_query += f" AND max_time_month >= '{start_date}'"
+        print(f"DEBUG: Added date filter: {start_date}")
 
-    print(f"DEBUG: Executing query...")
-    raw_df = query.execute()
-    print(f"DEBUG: Query executed, got data shape: {raw_df.shape if raw_df is not None else 'None'}")
+    # Add other filters
+    for filter_item in other_filters:
+        if isinstance(filter_item, dict):
+            for key, value in filter_item.items():
+                if isinstance(value, list):
+                    values_str = "', '".join(str(v) for v in value)
+                    sql_query += f" AND {key} IN ('{values_str}')"
+                else:
+                    sql_query += f" AND {key} = '{value}'"
+                print(f"DEBUG: Added filter: {key} = {value}")
 
-    if raw_df is not None and not raw_df.empty:
-        print(f"DEBUG: Raw data columns: {list(raw_df.columns)}")
-        print(f"DEBUG: Raw data head:\n{raw_df.head()}")
+    sql_query += f"""
+    GROUP BY max_time_month
+    ORDER BY max_time_month
+    """
 
-        # Standardize column names - AR returns metric name and max_time_month
-        if 'max_time_month' in raw_df.columns:
-            raw_df = raw_df.rename(columns={'max_time_month': 'period'})
-            print(f"DEBUG: Renamed max_time_month to period")
-        if metric in raw_df.columns:
-            raw_df = raw_df.rename(columns={metric: 'value'})
-            print(f"DEBUG: Renamed {metric} to value")
-        elif 'sales' in raw_df.columns:  # fallback
-            raw_df = raw_df.rename(columns={'sales': 'value'})
-            print(f"DEBUG: Renamed sales to value (fallback)")
-        elif 'volume' in raw_df.columns:  # fallback for volume
-            raw_df = raw_df.rename(columns={'volume': 'value'})
-            print(f"DEBUG: Renamed volume to value (fallback)")
+    print(f"DEBUG: Executing SQL query:\n{sql_query}")
 
-        print(f"DEBUG: Final data columns: {list(raw_df.columns)}")
-        print(f"DEBUG: Final data shape: {raw_df.shape}")
-    else:
-        print(f"DEBUG: No data returned from query")
+    try:
+        # Execute SQL query using context
+        raw_df = context.execute_sql(sql_query)
+        print(f"DEBUG: SQL executed successfully, got shape: {raw_df.shape if raw_df is not None else 'None'}")
 
-    return raw_df
+        if raw_df is not None and not raw_df.empty:
+            print(f"DEBUG: Raw data columns: {list(raw_df.columns)}")
+            print(f"DEBUG: Raw data sample:\n{raw_df.head()}")
+
+            # Standardize column names
+            if 'max_time_month' in raw_df.columns:
+                raw_df = raw_df.rename(columns={'max_time_month': 'period'})
+                print(f"DEBUG: Renamed max_time_month to period")
+
+            if metric in raw_df.columns:
+                raw_df = raw_df.rename(columns={metric: 'value'})
+                print(f"DEBUG: Renamed {metric} to value")
+
+            print(f"DEBUG: Final columns: {list(raw_df.columns)}")
+            print(f"DEBUG: Final shape: {raw_df.shape}")
+        else:
+            print(f"DEBUG: No data returned from SQL query")
+
+        return raw_df
+
+    except Exception as e:
+        print(f"DEBUG: SQL execution failed: {str(e)}")
+        return None
 
 def analyze_patterns(df):
     """
