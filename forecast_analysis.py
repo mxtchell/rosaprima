@@ -77,7 +77,15 @@ from skill_framework import skill, SkillParameter, SkillInput, SkillOutput
 )
 def forecast_analysis(parameters: SkillInput) -> SkillOutput:
     """
-    Generate forecasts using multiple models and select the best performer
+    Forecast Analysis skill
+
+    Generates intelligent forecasts using multi-model selection and automatic optimization.
+    """
+    return run_forecast_analysis(parameters)
+
+def run_forecast_analysis(parameters: SkillInput) -> SkillOutput:
+    """
+    Main forecast analysis logic
     """
     try:
         # Extract parameters
