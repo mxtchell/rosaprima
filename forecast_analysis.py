@@ -84,11 +84,11 @@ def run_forecast_analysis(parameters: SkillInput) -> SkillOutput:
         print(f"DEBUG: Raw parameters.arguments: {parameters.arguments}")
 
         # Extract parameters
-        metric = parameters.arguments.get('metric')
-        forecast_steps = parameters.arguments.get('forecast_steps', 6)
-        start_date = parameters.arguments.get('start_date')
-        other_filters = parameters.arguments.get('other_filters', [])
-        confidence_level = parameters.arguments.get('confidence_level', 0.95)
+        metric = parameters.arguments.metric
+        forecast_steps = getattr(parameters.arguments, 'forecast_steps', 6)
+        start_date = getattr(parameters.arguments, 'start_date', None)
+        other_filters = getattr(parameters.arguments, 'other_filters', [])
+        confidence_level = getattr(parameters.arguments, 'confidence_level', 0.95)
 
         print(f"DEBUG: Extracted parameters:")
         print(f"  - metric: {metric} (type: {type(metric)})")
