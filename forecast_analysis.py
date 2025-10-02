@@ -13,8 +13,8 @@ warnings.filterwarnings('ignore')
 from skill_framework import skill, SkillParameter, SkillInput, SkillOutput
 from answer_rocket import AnswerRocketClient
 
-# Use the same DATABASE_ID as price variance skill for pasta dataset
-DATABASE_ID = "1fd0bbbb-3b40-4cc3-b56f-456e50808817"
+# Use the correct DATABASE_ID for pasta dataset
+DATABASE_ID = "7a30e8fc-e7aa-4829-9020-fa94572244da"
 
 
 @skill(
