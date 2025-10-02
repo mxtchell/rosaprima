@@ -191,7 +191,7 @@ def fetch_data(metric, start_date, other_filters):
     # Build SQL query to get time series data for forecasting
     sql_query = f"""
     SELECT
-        max_time_month,
+        month_new,
         SUM({metric}) as {metric}
     FROM pasta_2025
     WHERE 1=1
@@ -199,7 +199,7 @@ def fetch_data(metric, start_date, other_filters):
 
     # Add date filter if provided
     if start_date:
-        sql_query += f" AND max_time_month >= '{start_date}'"
+        sql_query += f" AND month_new >= '{start_date}'"
         print(f"DEBUG: Added date filter: {start_date}")
 
     # Add other filters
@@ -215,18 +215,17 @@ def fetch_data(metric, start_date, other_filters):
                     print(f"DEBUG: Added filter: {key} = {value}")
 
     sql_query += f"""
-    GROUP BY max_time_month
-    ORDER BY max_time_month
+    GROUP BY month_new
+    ORDER BY month_new
     """
 
     print(f"DEBUG: Executing SQL query:\n{sql_query}")
 
     try:
-        # Execute SQL query using context
-        print(f"DEBUG: About to execute SQL on context")
-        print(f"DEBUG: Context type: {type(context)}")
+        # Execute SQL query using AnswerRocketClient
+        print(f"DEBUG: About to execute SQL using AnswerRocketClient")
 
-        if hasattr(context, 'sql'):
+        if hasattr(arc, 'data'):
             result = context.sql(sql_query)
             print(f"DEBUG: SQL executed using context.sql()")
         elif hasattr(context, 'execute_sql'):
@@ -250,9 +249,9 @@ def fetch_data(metric, start_date, other_filters):
             print(f"DEBUG: Raw data sample:\n{raw_df.head()}")
 
             # Standardize column names
-            if 'max_time_month' in raw_df.columns:
-                raw_df = raw_df.rename(columns={'max_time_month': 'period'})
-                print(f"DEBUG: Renamed max_time_month to period")
+            if 'month_new' in raw_df.columns:
+                raw_df = raw_df.rename(columns={'month_new': 'period'})
+                print(f"DEBUG: Renamed month_new to period")
 
             if metric in raw_df.columns:
                 raw_df = raw_df.rename(columns={metric: 'value'})
