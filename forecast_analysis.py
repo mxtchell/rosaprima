@@ -117,8 +117,17 @@ def run_forecast_analysis(parameters: SkillInput) -> SkillOutput:
             )
 
         print(f"DEBUG: Calling fetch_data with metric={metric}, start_date={start_date}")
+        print(f"DEBUG: Context type: {type(context)}")
+        print(f"DEBUG: Context attributes: {dir(context) if context else 'None'}")
+
         # Get data from context
         data_df = fetch_data(context, metric, start_date, other_filters)
+
+        print(f"DEBUG: fetch_data returned, data_df type: {type(data_df)}")
+        print(f"DEBUG: data_df is None: {data_df is None}")
+        if data_df is not None:
+            print(f"DEBUG: data_df.empty: {data_df.empty if hasattr(data_df, 'empty') else 'No empty attribute'}")
+            print(f"DEBUG: data_df shape: {data_df.shape if hasattr(data_df, 'shape') else 'No shape attribute'}")
 
         if data_df is None or data_df.empty:
             return SkillOutput(
@@ -167,8 +176,12 @@ def run_forecast_analysis(parameters: SkillInput) -> SkillOutput:
 
     except Exception as e:
         # Don't throw exceptions - return user-friendly error
+        print(f"DEBUG: EXCEPTION OCCURRED: {str(e)}")
+        print(f"DEBUG: Exception type: {type(e)}")
+        import traceback
+        print(f"DEBUG: Full traceback:\n{traceback.format_exc()}")
         return SkillOutput(
-            final_prompt=f"An error occurred while generating the forecast. Please check your data and try again.",
+            final_prompt=f"An error occurred while generating the forecast. Please check your data and try again. Error: {str(e)}",
             warnings=[f"Error: {str(e)}"]
         )
 
@@ -211,9 +224,17 @@ def fetch_data(context, metric, start_date, other_filters):
     print(f"DEBUG: Executing SQL query:\n{sql_query}")
 
     try:
-        # Execute SQL query using context
-        raw_df = context.execute_sql(sql_query)
-        print(f"DEBUG: SQL executed successfully, got shape: {raw_df.shape if raw_df is not None else 'None'}")
+        print(f"DEBUG: About to execute SQL on context")
+        print(f"DEBUG: Context has execute_sql method: {hasattr(context, 'execute_sql')}")
+
+        if hasattr(context, 'execute_sql'):
+            # Execute SQL query using context
+            raw_df = context.execute_sql(sql_query)
+            print(f"DEBUG: SQL executed successfully, got shape: {raw_df.shape if raw_df is not None else 'None'}")
+        else:
+            print(f"DEBUG: Context does not have execute_sql method")
+            print(f"DEBUG: Available context methods: {[m for m in dir(context) if not m.startswith('_')]}")
+            return None
 
         if raw_df is not None and not raw_df.empty:
             print(f"DEBUG: Raw data columns: {list(raw_df.columns)}")
