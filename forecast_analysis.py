@@ -9,11 +9,7 @@ from typing import Optional, Dict, Any, List
 import warnings
 warnings.filterwarnings('ignore')
 
-try:
-    from skill_builder import skill, SkillOutput, ExportData, InputParam
-except ImportError:
-    # For local testing
-    from mock_skill_builder import skill, SkillOutput, ExportData, InputParam
+from skill_builder import skill, SkillOutput, ExportData, InputParam, SkillInput
 
 # Check if running on AnswerRocket platform
 AR_IS_RUNNING_ON_FLEET = os.getenv("AR_IS_RUNNING_ON_FLEET", "false").lower() == "true"
@@ -845,3 +841,11 @@ def create_forecast_layout(metric, forecast_steps, start_date, other_filters, mo
             }
         ]
     }
+
+if __name__ == '__main__':
+    skill_input: SkillInput = forecast_analysis.create_input(arguments={
+        'metric': "volume",
+        'forecast_steps': 6,
+        'start_date': "2022-01-01",
+        'other_filters': [{"dim": "manufacturer", "op": "=", "val": ["barilla"]}]
+    })
