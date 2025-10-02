@@ -14,7 +14,7 @@ from skill_framework import skill, SkillParameter, SkillInput, SkillOutput
 
 
 @skill(
-    name="forecast_analysis",
+    name="Forecast Analysis",
     llm_name="forecast_analysis",
     description="Generate intelligent forecasts using best-fit model selection with automatic model optimization",
     capabilities="Provides multi-model forecasting with automatic selection of best-performing algorithm. Supports linear regression, moving average, and other forecasting models. Generates confidence intervals, trend analysis, and seasonality detection. Creates professional visualizations with KPIs, charts, and insights.",
