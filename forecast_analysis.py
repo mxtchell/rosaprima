@@ -24,35 +24,26 @@ from skill_framework import skill, SkillParameter, SkillInput, SkillOutput
     parameters=[
         SkillParameter(
             name="metric",
-            description="The metric to forecast",
-            parameter_type="string",
-            is_required=True
+            constrained_to="metrics",
+            description="The metric to forecast"
         ),
         SkillParameter(
             name="forecast_steps",
             description="Number of periods to forecast (months)",
-            parameter_type="integer",
-            is_required=False,
             default_value=6
         ),
         SkillParameter(
             name="start_date",
-            description="Start date for training data (YYYY-MM-DD)",
-            parameter_type="string",
-            is_required=False,
-            default_value=None
+            description="Start date for training data (YYYY-MM-DD)"
         ),
         SkillParameter(
             name="other_filters",
-            description="Additional filters to apply to the data",
             constrained_to="filters",
-            is_required=False
+            description="Additional filters to apply to the data"
         ),
         SkillParameter(
             name="confidence_level",
             description="Confidence level for prediction intervals",
-            parameter_type="float",
-            is_required=False,
             default_value=0.95
         ),
         SkillParameter(
