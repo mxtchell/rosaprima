@@ -84,7 +84,6 @@ def run_forecast_analysis(parameters: SkillInput) -> SkillOutput:
         print(f"DEBUG: Raw parameters.arguments: {parameters.arguments}")
 
         # Extract parameters
-        context = parameters.context
         metric = parameters.arguments.get('metric')
         forecast_steps = parameters.arguments.get('forecast_steps', 6)
         start_date = parameters.arguments.get('start_date')
@@ -117,11 +116,9 @@ def run_forecast_analysis(parameters: SkillInput) -> SkillOutput:
             )
 
         print(f"DEBUG: Calling fetch_data with metric={metric}, start_date={start_date}")
-        print(f"DEBUG: Context type: {type(context)}")
-        print(f"DEBUG: Context attributes: {dir(context) if context else 'None'}")
 
-        # Get data from context
-        data_df = fetch_data(context, metric, start_date, other_filters)
+        # Get data from AnswerRocket
+        data_df = fetch_data(metric, start_date, other_filters)
 
         print(f"DEBUG: fetch_data returned, data_df type: {type(data_df)}")
         print(f"DEBUG: data_df is None: {data_df is None}")
@@ -185,7 +182,7 @@ def run_forecast_analysis(parameters: SkillInput) -> SkillOutput:
             warnings=[f"Error: {str(e)}"]
         )
 
-def fetch_data(context, metric, start_date, other_filters):
+def fetch_data(metric, start_date, other_filters):
     """
     Fetch data using SQL query
     """
