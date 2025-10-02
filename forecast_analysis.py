@@ -188,12 +188,20 @@ def fetch_data(metric, start_date, other_filters):
     """
     print(f"DEBUG: fetch_data called with metric={metric}, start_date={start_date}, filters={other_filters}")
 
+    # Create AnswerRocket client
+    try:
+        arc = AnswerRocketClient()
+        print(f"DEBUG: Created AnswerRocketClient successfully")
+    except Exception as e:
+        print(f"DEBUG: Failed to create AnswerRocketClient: {e}")
+        return None
+
     # Build SQL query to get time series data for forecasting
     sql_query = f"""
     SELECT
         month_new,
         SUM({metric}) as {metric}
-    FROM pasta_2025
+    FROM read_csv('pasta_2025.csv')
     WHERE 1=1
     """
 
