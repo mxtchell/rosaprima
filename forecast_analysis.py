@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Forecast Skill - Multi-model forecasting with automatic model selection
 """
@@ -9,7 +10,7 @@ from typing import Optional, Dict, Any, List
 import warnings
 warnings.filterwarnings('ignore')
 
-from skill_builder import skill, SkillOutput, ExportData, InputParam, SkillInput
+from skill_framework import skill, SkillParameter, SkillInput, SkillOutput
 
 
 @skill(
@@ -21,39 +22,56 @@ from skill_builder import skill, SkillOutput, ExportData, InputParam, SkillInput
     example_questions="What will sales be over the next 6 months? Can you forecast volume for Q1 2024? Show me a 12-month revenue projection with confidence intervals. What's the expected growth trend for the next quarter?",
     parameter_guidance="Select metric to forecast (sales, volume, etc.). Choose forecast steps (1-36 months, default 6). Optionally filter by date range or apply dimensional filters. The skill automatically selects the best forecasting model based on historical performance.",
     parameters=[
-        InputParam(
+        SkillParameter(
             name="metric",
             description="The metric to forecast",
-            type="string",
-            required=True
+            parameter_type="string",
+            is_required=True
         ),
-        InputParam(
+        SkillParameter(
             name="forecast_steps",
             description="Number of periods to forecast (months)",
-            type="integer",
-            required=False,
-            default=6
+            parameter_type="integer",
+            is_required=False,
+            default_value=6
         ),
-        InputParam(
+        SkillParameter(
             name="start_date",
             description="Start date for training data (YYYY-MM-DD)",
-            type="string",
-            required=False,
-            default=None
+            parameter_type="string",
+            is_required=False,
+            default_value=None
         ),
-        InputParam(
+        SkillParameter(
             name="other_filters",
             description="Additional filters to apply to the data",
-            type="list",
-            required=False,
-            default=[]
+            constrained_to="filters",
+            is_required=False
         ),
-        InputParam(
+        SkillParameter(
             name="confidence_level",
             description="Confidence level for prediction intervals",
-            type="float",
-            required=False,
-            default=0.95
+            parameter_type="float",
+            is_required=False,
+            default_value=0.95
+        ),
+        SkillParameter(
+            name="max_prompt",
+            parameter_type="prompt",
+            description="Prompt being used for max response.",
+            default_value="Answer user question in 30 words or less using following facts:\n{{facts}}"
+        ),
+        SkillParameter(
+            name="insight_prompt",
+            parameter_type="prompt",
+            description="Prompt being used for detailed insights.",
+            default_value="Analyze the forecast data and provide insights about trends, seasonality, and recommendations for planning."
+        ),
+        SkillParameter(
+            name="forecast_viz_layout",
+            parameter_type="visualization",
+            description="Forecast Visualization Layout",
+            default_value=None
         )
     ]
 )
