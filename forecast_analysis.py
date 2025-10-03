@@ -314,13 +314,20 @@ def analyze_patterns(df):
 
 def run_models(df, periods, confidence_level):
     """
-    Run multiple forecasting models
+    Run multiple forecasting models using statsmodels and prophet
     """
-    from sklearn.linear_model import LinearRegression
-    from sklearn.metrics import mean_absolute_error, mean_squared_error
+    from statsmodels.tsa.holtwinters import ExponentialSmoothing
+    from prophet import Prophet
+    import warnings
+    warnings.filterwarnings('ignore')
 
     # Prepare data
     df = df.copy()
+
+    # Ensure period is datetime
+    if not pd.api.types.is_datetime64_any_dtype(df['period']):
+        df['period'] = pd.to_datetime(df['period'])
+
     df['period_num'] = range(len(df))
 
     # Split for validation
@@ -330,42 +337,94 @@ def run_models(df, periods, confidence_level):
 
     models = {}
 
-    # Linear Model
+    # 1. Prophet Model
     try:
-        X_train = train[['period_num']]
-        y_train = train['value']
-        X_val = validate[['period_num']]
-        y_val = validate['value']
+        # Prepare data for Prophet
+        prophet_df = train[['period', 'value']].rename(columns={'period': 'ds', 'value': 'y'})
 
-        model = LinearRegression()
-        model.fit(X_train, y_train)
-        val_pred = model.predict(X_val)
+        # Create and fit model
+        model = Prophet(
+            yearly_seasonality=True,
+            weekly_seasonality=False,
+            daily_seasonality=False,
+            interval_width=confidence_level
+        )
+        model.fit(prophet_df)
+
+        # Validate
+        future_val = pd.DataFrame({'ds': validate['period']})
+        val_forecast = model.predict(future_val)
+        val_pred = val_forecast['yhat'].values
 
         # Calculate metrics
-        mae = mean_absolute_error(y_val, val_pred)
-        mape = np.mean(np.abs((y_val - val_pred) / y_val)) * 100
+        mae = np.mean(np.abs(validate['value'].values - val_pred))
+        mape = np.mean(np.abs((validate['value'].values - val_pred) / validate['value'].values)) * 100
 
-        # Generate full forecast
-        future_periods = np.arange(len(df), len(df) + periods).reshape(-1, 1)
-        forecast = model.predict(future_periods)
+        # Full forecast
+        future_dates = pd.date_range(
+            start=df['period'].iloc[-1] + pd.DateOffset(months=1),
+            periods=periods,
+            freq='MS'
+        )
+        future = pd.DataFrame({'ds': future_dates})
+        forecast = model.predict(future)
 
-        # Simple confidence intervals
-        residuals = y_train - model.predict(X_train)
+        models['prophet'] = {
+            'forecast': forecast['yhat'].values,
+            'lower_bound': forecast['yhat_lower'].values,
+            'upper_bound': forecast['yhat_upper'].values,
+            'mae': mae,
+            'mape': mape,
+            'score': mae
+        }
+    except Exception as e:
+        print(f"DEBUG: Prophet model failed: {e}")
+
+    # 2. Holt-Winters Exponential Smoothing
+    try:
+        # Determine seasonality
+        seasonal_periods = 12 if len(train) >= 24 else None
+
+        if seasonal_periods:
+            model = ExponentialSmoothing(
+                train['value'],
+                seasonal_periods=seasonal_periods,
+                trend='add',
+                seasonal='add'
+            )
+        else:
+            model = ExponentialSmoothing(
+                train['value'],
+                trend='add'
+            )
+
+        fitted_model = model.fit()
+
+        # Validate
+        val_pred = fitted_model.forecast(len(validate))
+        mae = np.mean(np.abs(validate['value'].values - val_pred))
+        mape = np.mean(np.abs((validate['value'].values - val_pred) / validate['value'].values)) * 100
+
+        # Full forecast
+        forecast = fitted_model.forecast(periods)
+
+        # Confidence intervals (simple approach)
+        residuals = train['value'] - fitted_model.fittedvalues
         std_error = np.std(residuals)
         z_score = 1.96 if confidence_level == 0.95 else 2.58
 
-        models['linear'] = {
-            'forecast': forecast,
+        models['holt_winters'] = {
+            'forecast': forecast.values if hasattr(forecast, 'values') else forecast,
             'lower_bound': forecast - z_score * std_error,
             'upper_bound': forecast + z_score * std_error,
             'mae': mae,
             'mape': mape,
-            'score': mae  # Use MAE as primary score
+            'score': mae
         }
-    except:
-        pass
+    except Exception as e:
+        print(f"DEBUG: Holt-Winters model failed: {e}")
 
-    # Moving Average Model
+    # 3. Simple Moving Average (fallback)
     try:
         window = min(3, len(train) // 4)
         ma_forecast = []
@@ -377,8 +436,8 @@ def run_models(df, periods, confidence_level):
             recent_values.pop(0)
             recent_values.append(pred)
 
-        mae = mean_absolute_error(validate['value'], ma_forecast)
-        mape = np.mean(np.abs((validate['value'] - ma_forecast) / validate['value'])) * 100
+        mae = np.mean(np.abs(validate['value'].values - np.array(ma_forecast)))
+        mape = np.mean(np.abs((validate['value'].values - np.array(ma_forecast)) / validate['value'].values)) * 100
 
         # Full forecast
         recent_values = list(df['value'].values[-window:])
@@ -391,16 +450,14 @@ def run_models(df, periods, confidence_level):
 
         models['moving_average'] = {
             'forecast': np.array(full_forecast),
-            'lower_bound': np.array(full_forecast) * 0.9,  # Simple bounds
+            'lower_bound': np.array(full_forecast) * 0.9,
             'upper_bound': np.array(full_forecast) * 1.1,
             'mae': mae,
             'mape': mape,
             'score': mae
         }
-    except:
-        pass
-
-    # Add more models as needed (exponential smoothing, ARIMA, etc.)
+    except Exception as e:
+        print(f"DEBUG: Moving Average model failed: {e}")
 
     return models
 
