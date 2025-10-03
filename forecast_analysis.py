@@ -742,6 +742,28 @@ def create_visualizations(output_df, metric, best_model, patterns, model_results
     historical['period_str'] = pd.to_datetime(historical['period']).dt.strftime('%b %Y')
     forecast['period_str'] = pd.to_datetime(forecast['period']).dt.strftime('%b %Y')
 
+    # Determine decimal places based on data magnitude (calculate early for use in series)
+    all_values = list(historical['actual']) + list(forecast['forecast'])
+    max_value = max(all_values)
+
+    # Use decimals for small numbers (< 100), no decimals for large numbers
+    if max_value < 10:
+        y_format = "${value:,.2f}"  # 2 decimals for very small numbers (e.g., $1.23)
+        tooltip_format = "${point.y:,.2f}"
+        ci_format = "${point.low:,.2f} - ${point.high:,.2f}"
+    elif max_value < 100:
+        y_format = "${value:,.2f}"  # 2 decimals for small numbers (e.g., $12.34)
+        tooltip_format = "${point.y:,.2f}"
+        ci_format = "${point.low:,.2f} - ${point.high:,.2f}"
+    elif max_value < 1000:
+        y_format = "${value:,.1f}"  # 1 decimal for medium numbers (e.g., $123.4)
+        tooltip_format = "${point.y:,.1f}"
+        ci_format = "${point.low:,.1f} - ${point.high:,.1f}"
+    else:
+        y_format = "${value:,.0f}"  # No decimals for large numbers (e.g., $1,234)
+        tooltip_format = "${point.y:,.0f}"
+        ci_format = "${point.low:,.0f} - ${point.high:,.0f}"
+
     # Build filter display for chart subtitle
     filter_text = ""
     if other_filters:
@@ -776,16 +798,6 @@ def create_visualizations(output_df, metric, best_model, patterns, model_results
         "marker": {"enabled": True, "radius": 5, "symbol": "diamond"}
     }
 
-    # Determine format for confidence interval tooltip (define before using)
-    if max_value < 10:
-        ci_format = "${point.low:,.2f} - ${point.high:,.2f}"
-    elif max_value < 100:
-        ci_format = "${point.low:,.2f} - ${point.high:,.2f}"
-    elif max_value < 1000:
-        ci_format = "${point.low:,.1f} - ${point.high:,.1f}"
-    else:
-        ci_format = "${point.low:,.0f} - ${point.high:,.0f}"
-
     # Confidence interval as area range (shows uncertainty range)
     confidence_series = {
         "name": f"{confidence_pct}% Confidence Range",
@@ -805,25 +817,6 @@ def create_visualizations(output_df, metric, best_model, patterns, model_results
 
     # All categories for x-axis
     all_categories = list(historical['period_str']) + list(forecast['period_str'])
-
-    # Determine decimal places based on data magnitude
-    # Get max value to determine if we need decimals
-    all_values = list(historical['actual']) + list(forecast['forecast'])
-    max_value = max(all_values)
-
-    # Use decimals for small numbers (< 100), no decimals for large numbers
-    if max_value < 10:
-        y_format = "${value:,.2f}"  # 2 decimals for very small numbers (e.g., $1.23)
-        tooltip_format = "${point.y:,.2f}"
-    elif max_value < 100:
-        y_format = "${value:,.2f}"  # 2 decimals for small numbers (e.g., $12.34)
-        tooltip_format = "${point.y:,.2f}"
-    elif max_value < 1000:
-        y_format = "${value:,.1f}"  # 1 decimal for medium numbers (e.g., $123.4)
-        tooltip_format = "${point.y:,.1f}"
-    else:
-        y_format = "${value:,.0f}"  # No decimals for large numbers (e.g., $1,234)
-        tooltip_format = "${point.y:,.0f}"
 
     # Create Highcharts configuration
     chart_config = {
