@@ -10,9 +10,11 @@ from typing import Optional, Dict, Any, List
 import warnings
 warnings.filterwarnings('ignore')
 
-from skill_framework import skill, SkillParameter, SkillInput, SkillOutput
+from skill_framework import skill, SkillParameter, SkillInput, SkillOutput, SkillVisualization
+from skill_framework.layouts import wire_layout
 from answer_rocket import AnswerRocketClient
 from ar_analytics.helpers.utils import get_dataset_id
+import json
 
 # Database ID for pasta dataset - required for SQL queries
 # This is different from DATASET_ID and must be set correctly for each environment
@@ -173,8 +175,20 @@ def run_forecast_analysis(parameters: SkillInput) -> SkillOutput:
             forecast_stats=calculate_forecast_stats(best_results)
         )
 
+        # Create visualizations
+        visualizations = create_visualizations(
+            output_df=output_df,
+            metric=metric,
+            best_model=best_model,
+            patterns=patterns,
+            model_results=model_results,
+            forecast_stats=calculate_forecast_stats(best_results)
+        )
+
         return SkillOutput(
-            final_prompt=prompt
+            final_prompt=prompt,
+            visualizations=visualizations,
+            narrative=None
         )
 
     except Exception as e:
@@ -567,6 +581,145 @@ def generate_prompt(metric, forecast_steps, best_model, patterns, model_results,
     """
 
     return prompt
+
+def create_visualizations(output_df, metric, best_model, patterns, model_results, forecast_stats):
+    """
+    Create visualizations for forecast results
+    """
+    visualizations = []
+
+    # Prepare data for chart
+    historical = output_df[output_df['type'] == 'historical'].copy()
+    forecast = output_df[output_df['type'] == 'forecast'].copy()
+
+    # Format dates for chart
+    historical['period_str'] = pd.to_datetime(historical['period']).dt.strftime('%Y-%m')
+    forecast['period_str'] = pd.to_datetime(forecast['period']).dt.strftime('%Y-%m')
+
+    # Create series data for Highcharts
+    historical_series = {
+        "name": "Historical",
+        "data": [{"x": i, "y": float(val), "name": date}
+                 for i, (val, date) in enumerate(zip(historical['actual'], historical['period_str']))],
+        "color": "#2E86C1",
+        "marker": {"enabled": True, "radius": 4}
+    }
+
+    forecast_series = {
+        "name": "Forecast",
+        "data": [{"x": len(historical) + i, "y": float(val), "name": date}
+                 for i, (val, date) in enumerate(zip(forecast['forecast'], forecast['period_str']))],
+        "color": "#E74C3C",
+        "dashStyle": "Dash",
+        "marker": {"enabled": True, "radius": 4}
+    }
+
+    # Confidence interval series
+    lower_bound_series = {
+        "name": "Lower Bound",
+        "data": [{"x": len(historical) + i, "y": float(val)}
+                 for i, val in enumerate(forecast['lower_bound'])],
+        "color": "rgba(231, 76, 60, 0.2)",
+        "lineWidth": 0,
+        "marker": {"enabled": False},
+        "enableMouseTracking": False
+    }
+
+    upper_bound_series = {
+        "name": "Upper Bound",
+        "data": [{"x": len(historical) + i, "y": float(val)}
+                 for i, val in enumerate(forecast['upper_bound'])],
+        "color": "rgba(231, 76, 60, 0.2)",
+        "fillOpacity": 0.3,
+        "lineWidth": 0,
+        "marker": {"enabled": False},
+        "type": "arearange",
+        "linkedTo": ":previous"
+    }
+
+    # All categories for x-axis
+    all_categories = list(historical['period_str']) + list(forecast['period_str'])
+
+    # Create Highcharts configuration
+    chart_config = {
+        "type": "highcharts",
+        "config": {
+            "chart": {"type": "line", "height": 400},
+            "title": {"text": f"{metric.title()} Forecast - {best_model.replace('_', ' ').title()} Model"},
+            "xAxis": {
+                "categories": all_categories,
+                "title": {"text": "Period"}
+            },
+            "yAxis": {
+                "title": {"text": metric.title()},
+                "labels": {"format": "{value:,.0f}"}
+            },
+            "tooltip": {
+                "shared": True,
+                "valueDecimals": 0,
+                "valuePrefix": "$"
+            },
+            "series": [historical_series, forecast_series],
+            "plotOptions": {
+                "line": {
+                    "marker": {"enabled": True}
+                }
+            }
+        }
+    }
+
+    # Create layout with chart
+    layout = {
+        "layoutJson": {
+            "type": "Document",
+            "style": {
+                "backgroundColor": "#ffffff",
+                "padding": "20px"
+            },
+            "children": [
+                {
+                    "type": "Header",
+                    "text": f"Forecast Analysis: {metric.title()}",
+                    "style": {
+                        "fontSize": "24px",
+                        "fontWeight": "bold",
+                        "marginBottom": "20px",
+                        "color": "#2C3E50"
+                    }
+                },
+                {
+                    "type": "HighchartsChart",
+                    "options": chart_config["config"]
+                },
+                {
+                    "type": "Paragraph",
+                    "text": f"**Model Used:** {best_model.replace('_', ' ').title()}",
+                    "style": {"marginTop": "20px", "fontSize": "14px"}
+                },
+                {
+                    "type": "Paragraph",
+                    "text": f"**Model Accuracy:** {model_results[best_model]['mape']:.1f}% MAPE",
+                    "style": {"fontSize": "14px"}
+                },
+                {
+                    "type": "Paragraph",
+                    "text": f"**Trend:** {patterns['trend_direction'].title()} (R² = {patterns['trend_r2']:.3f})",
+                    "style": {"fontSize": "14px"}
+                },
+                {
+                    "type": "Paragraph",
+                    "text": f"**Total Forecasted:** ${forecast_stats['total']:,.0f}",
+                    "style": {"fontSize": "14px", "fontWeight": "bold"}
+                }
+            ]
+        },
+        "inputVariables": []
+    }
+
+    rendered = wire_layout(layout, {})
+    visualizations.append(SkillVisualization(title="Forecast", layout=rendered))
+
+    return visualizations
 
 
 if __name__ == '__main__':
