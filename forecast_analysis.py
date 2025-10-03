@@ -14,6 +14,10 @@ from skill_framework import skill, SkillParameter, SkillInput, SkillOutput
 from answer_rocket import AnswerRocketClient
 from ar_analytics.helpers.utils import get_dataset_id
 
+# Database ID for pasta dataset - required for SQL queries
+# This is different from DATASET_ID and must be set correctly for each environment
+DATABASE_ID = "83c2268f-af77-4d00-8a6b-7181dc06643e"
+
 
 @skill(
     name="Forecast Analysis",
@@ -200,13 +204,8 @@ def fetch_data(metric, start_date, other_filters):
         print(f"DEBUG: Failed to create AnswerRocketClient: {e}")
         return None
 
-    # Get DATABASE_ID from environment
-    database_id = os.getenv('DATABASE_ID')
-    if not database_id:
-        print(f"DEBUG: DATABASE_ID not found in environment")
-        # Fall back to get_dataset_id
-        database_id = get_dataset_id()
-
+    # Use DATABASE_ID - try environment variable first, then fall back to constant
+    database_id = os.getenv('DATABASE_ID', DATABASE_ID)
     print(f"DEBUG: Using DATABASE_ID: {database_id}")
 
     # Build SQL query to get time series data for forecasting
