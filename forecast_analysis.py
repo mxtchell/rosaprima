@@ -253,6 +253,20 @@ def run_forecast_analysis(parameters: SkillInput) -> SkillOutput:
             ParameterDisplayDescription(key="accuracy", value=f"Accuracy: {model_results[best_model]['mape']:.1f}% MAPE")
         ]
 
+        # Add filter pills if filters exist
+        if other_filters:
+            for filter_item in other_filters:
+                if isinstance(filter_item, dict) and 'dim' in filter_item and 'val' in filter_item:
+                    dimension = filter_item['dim'].title()
+                    values = filter_item['val']
+                    if isinstance(values, list):
+                        values_str = ', '.join(str(v).title() for v in values)
+                    else:
+                        values_str = str(values).title()
+                    param_info.append(
+                        ParameterDisplayDescription(key=f"filter_{dimension}", value=f"{dimension}: {values_str}")
+                    )
+
         # Create visualizations (without insights - they go in narrative)
         visualizations = create_visualizations(
             output_df=output_df,
@@ -260,7 +274,8 @@ def run_forecast_analysis(parameters: SkillInput) -> SkillOutput:
             best_model=best_model,
             patterns=patterns,
             model_results=model_results,
-            forecast_stats=forecast_stats_dict
+            forecast_stats=forecast_stats_dict,
+            other_filters=other_filters
         )
 
         return SkillOutput(
@@ -682,7 +697,7 @@ def generate_prompt(metric, forecast_steps, best_model, patterns, model_results,
 
     return prompt
 
-def create_visualizations(output_df, metric, best_model, patterns, model_results, forecast_stats):
+def create_visualizations(output_df, metric, best_model, patterns, model_results, forecast_stats, other_filters=None):
     """
     Create visualizations for forecast results (chart only - insights go in narrative)
     """
@@ -695,6 +710,22 @@ def create_visualizations(output_df, metric, best_model, patterns, model_results
     # Format dates for chart
     historical['period_str'] = pd.to_datetime(historical['period']).dt.strftime('%b %Y')
     forecast['period_str'] = pd.to_datetime(forecast['period']).dt.strftime('%b %Y')
+
+    # Build filter display for chart subtitle
+    filter_text = ""
+    if other_filters:
+        filter_parts = []
+        for filter_item in other_filters:
+            if isinstance(filter_item, dict) and 'dim' in filter_item and 'val' in filter_item:
+                dimension = filter_item['dim'].title()
+                values = filter_item['val']
+                if isinstance(values, list):
+                    values_str = ', '.join(str(v).title() for v in values)
+                else:
+                    values_str = str(values).title()
+                filter_parts.append(f"{dimension}: {values_str}")
+        if filter_parts:
+            filter_text = " | " + " | ".join(filter_parts)
 
     # Create series data for Highcharts
     historical_series = {
@@ -714,9 +745,9 @@ def create_visualizations(output_df, metric, best_model, patterns, model_results
         "marker": {"enabled": True, "radius": 5, "symbol": "diamond"}
     }
 
-    # Confidence interval as area range
+    # Confidence interval as area range (shows uncertainty range - 95% probability actual values will fall within this range)
     confidence_series = {
-        "name": "95% Confidence Interval",
+        "name": "95% Confidence Range",
         "data": [None] * len(historical) + [[float(lower), float(upper)]
                  for lower, upper in zip(forecast['lower_bound'], forecast['upper_bound'])],
         "type": "arearange",
@@ -725,7 +756,10 @@ def create_visualizations(output_df, metric, best_model, patterns, model_results
         "fillOpacity": 0.3,
         "marker": {"enabled": False},
         "enableMouseTracking": True,
-        "zIndex": 0
+        "zIndex": 0,
+        "tooltip": {
+            "pointFormat": "<span style=\"color:{series.color}\">\u25CF</span> {series.name}: <b>${point.low:,.0f} - ${point.high:,.0f}</b><br/><span style=\"font-size:11px;color:#7F8C8D\">95% probability actual values fall within this range</span><br/>"
+        }
     }
 
     # All categories for x-axis
@@ -746,7 +780,7 @@ def create_visualizations(output_df, metric, best_model, patterns, model_results
                 "style": {"fontSize": "20px", "fontWeight": "bold", "color": "#2C3E50"}
             },
             "subtitle": {
-                "text": f"Model: {best_model.replace('_', ' ').title()} | Accuracy: {model_results[best_model]['mape']:.1f}% MAPE",
+                "text": f"Model: {best_model.replace('_', ' ').title()} | Accuracy: {model_results[best_model]['mape']:.1f}% MAPE{filter_text}",
                 "style": {"fontSize": "14px", "color": "#7F8C8D"}
             },
             "xAxis": {
