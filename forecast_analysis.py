@@ -18,9 +18,10 @@ from ar_analytics import ArUtils
 import json
 import jinja2
 
-# Database ID for pasta dataset - required for SQL queries
+# Database ID for rosaprima dataset - required for SQL queries
 # This is different from DATASET_ID and must be set correctly for each environment
-DATABASE_ID = "83c2268f-af77-4d00-8a6b-7181dc06643e"
+DATABASE_ID = "56aa551e-2913-4f3a-9e4c-2ab5896ac908"
+DATASET_ID = "e5e7c8a3-a9ff-47d8-9b57-cda29401e625"
 
 
 @skill(
@@ -28,7 +29,7 @@ DATABASE_ID = "83c2268f-af77-4d00-8a6b-7181dc06643e"
     llm_name="forecast_analysis",
     description="Generate intelligent forecasts using best-fit model selection with automatic model optimization",
     capabilities="Provides multi-model forecasting with automatic selection of best-performing algorithm. Supports linear regression, moving average, and other forecasting models. Generates confidence intervals, trend analysis, and seasonality detection. Creates professional visualizations with KPIs, charts, and insights.",
-    limitations="Requires minimum 12 historical data points. Limited to 36 months forecast horizon. Assumes monthly granularity (month_new). Performance depends on data quality and historical patterns.",
+    limitations="Requires minimum 12 historical data points. Limited to 36 months forecast horizon. Assumes monthly granularity (InvoiceDate). Performance depends on data quality and historical patterns.",
     example_questions="What will sales be over the next 6 months? Can you forecast volume for Q1 2024? Show me a 12-month revenue projection with confidence intervals. What's the expected growth trend for the next quarter?",
     parameter_guidance="Select metric to forecast (sales, volume, etc.). Choose forecast steps (1-36 months, default 6). Optionally filter by date range or apply dimensional filters. The skill automatically selects the best forecasting model based on historical performance.",
     parameters=[
@@ -319,15 +320,15 @@ def fetch_data(metric, start_date, other_filters):
     # Build SQL query to get time series data for forecasting
     sql_query = f"""
     SELECT
-        month_new,
+        DATE_TRUNC('month', InvoiceDate) as invoice_month,
         SUM({metric}) as {metric}
-    FROM read_csv('pasta_2025.csv')
+    FROM read_parquet('Top20_SKUs_2021_Present.parquet')
     WHERE 1=1
     """
 
     # Add date filter if provided
     if start_date:
-        sql_query += f" AND month_new >= '{start_date}'"
+        sql_query += f" AND InvoiceDate >= '{start_date}'"
         print(f"DEBUG: Added date filter: {start_date}")
 
     # Add other filters
@@ -364,8 +365,8 @@ def fetch_data(metric, start_date, other_filters):
                         print(f"DEBUG: Added filter: {key} = {value}")
 
     sql_query += f"""
-    GROUP BY month_new
-    ORDER BY month_new
+    GROUP BY invoice_month
+    ORDER BY invoice_month
     """
 
     print(f"DEBUG: Executing SQL query:\n{sql_query}")
@@ -390,9 +391,9 @@ def fetch_data(metric, start_date, other_filters):
             print(f"DEBUG: Raw data sample:\n{raw_df.head()}")
 
             # Standardize column names
-            if 'month_new' in raw_df.columns:
-                raw_df = raw_df.rename(columns={'month_new': 'period'})
-                print(f"DEBUG: Renamed month_new to period")
+            if 'invoice_month' in raw_df.columns:
+                raw_df = raw_df.rename(columns={'invoice_month': 'period'})
+                print(f"DEBUG: Renamed invoice_month to period")
 
             if metric in raw_df.columns:
                 raw_df = raw_df.rename(columns={metric: 'value'})
