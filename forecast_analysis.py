@@ -10,11 +10,13 @@ from typing import Optional, Dict, Any, List
 import warnings
 warnings.filterwarnings('ignore')
 
-from skill_framework import skill, SkillParameter, SkillInput, SkillOutput, SkillVisualization
+from skill_framework import skill, SkillParameter, SkillInput, SkillOutput, SkillVisualization, ParameterDisplayDescription
 from skill_framework.layouts import wire_layout
 from answer_rocket import AnswerRocketClient
 from ar_analytics.helpers.utils import get_dataset_id
+from ar_analytics import ArUtils
 import json
+import jinja2
 
 # Database ID for pasta dataset - required for SQL queries
 # This is different from DATASET_ID and must be set correctly for each environment
@@ -58,14 +60,46 @@ DATABASE_ID = "83c2268f-af77-4d00-8a6b-7181dc06643e"
         SkillParameter(
             name="max_prompt",
             parameter_type="prompt",
-            description="Prompt being used for max response.",
-            default_value="Answer user question in 30 words or less using following facts:\n{{facts}}"
+            description="Prompt being used for max response (brief summary).",
+            default_value="Provide a brief 2-3 sentence summary of the forecast results using the following facts:\n{{facts}}"
         ),
         SkillParameter(
             name="insight_prompt",
             parameter_type="prompt",
-            description="Prompt being used for detailed insights.",
-            default_value="Analyze the forecast data and provide insights about trends, seasonality, and recommendations for planning."
+            description="Prompt being used for detailed skill insights.",
+            default_value="""Analyze the forecast results and provide comprehensive insights in the following format:
+
+## Forecast Summary
+[Brief overview of forecast period, total forecasted value, and model selected]
+
+## Why the {{model_name}} Model Was Selected
+[Explain why this model outperformed others based on accuracy metrics]
+
+## Accuracy
+[Discuss model accuracy metrics and reliability]
+
+## Suitability
+[Explain why this model is appropriate for the data patterns observed]
+
+## Key Trends and Expectations
+**Trend:** [Describe the overall trend direction and strength]
+
+**Seasonality:** [Discuss any seasonal patterns detected]
+
+**Volatility:** [Comment on data stability and consistency]
+
+## Confidence Level and Risks
+**Confidence Level:** [High/Medium/Low based on MAPE]
+
+**Risks to Watch For:**
+- [List key risks like external disruptions, demand changes, etc.]
+
+## Strategic Recommendations
+1. **[Recommendation category]:** [Detailed recommendation]
+2. **[Recommendation category]:** [Detailed recommendation]
+
+Facts:
+{{facts}}"""
         ),
         SkillParameter(
             name="forecast_viz_layout",
@@ -165,15 +199,59 @@ def run_forecast_analysis(parameters: SkillInput) -> SkillOutput:
         # Prepare output data
         output_df = prepare_output(data_df, best_results, best_model, patterns, model_results)
 
-        # Generate prompt for LLM
-        prompt = generate_prompt(
-            metric=metric,
-            forecast_steps=forecast_steps,
-            best_model=best_model,
-            patterns=patterns,
-            model_results=model_results,
-            forecast_stats=calculate_forecast_stats(best_results)
+        # Prepare facts for prompts
+        forecast_stats_dict = calculate_forecast_stats(best_results)
+        facts = {
+            'metric': metric,
+            'forecast_steps': forecast_steps,
+            'model_name': best_model.replace('_', ' ').title(),
+            'total_forecasted': f"${forecast_stats_dict['total']:,.0f}",
+            'average_per_period': f"${forecast_stats_dict['average']:,.0f}",
+            'growth_pct': f"{forecast_stats_dict['growth']:.1f}%",
+            'trend_direction': patterns['trend_direction'],
+            'trend_r2': f"{patterns['trend_r2']:.3f}",
+            'volatility': patterns['volatility_level'],
+            'has_seasonality': 'Yes' if patterns['has_seasonality'] else 'No',
+            'data_points': patterns['data_points'],
+            'model_accuracy_mape': f"{model_results[best_model]['mape']:.1f}%",
+            'model_accuracy_mae': f"{model_results[best_model]['mae']:,.0f}",
+            'model_comparison': [
+                {
+                    'name': name.replace('_', ' ').title(),
+                    'mae': f"{results['mae']:,.0f}",
+                    'mape': f"{results['mape']:.1f}%",
+                    'selected': name == best_model
+                }
+                for name, results in model_results.items()
+            ]
+        }
+
+        # Generate brief Max response
+        max_template = jinja2.Template(parameters.arguments.max_prompt)
+        max_response = max_template.render(facts=json.dumps(facts, indent=2))
+
+        # Generate detailed insights using LLM
+        insight_template = jinja2.Template(parameters.arguments.insight_prompt)
+        insight_prompt = insight_template.render(
+            facts=json.dumps(facts, indent=2),
+            model_name=facts['model_name']
         )
+
+        try:
+            ar_utils = ArUtils()
+            detailed_insights = ar_utils.get_llm_response(insight_prompt)
+        except Exception as e:
+            print(f"DEBUG: Failed to generate insights: {e}")
+            detailed_insights = "Forecast analysis completed successfully."
+
+        # Create parameter display pills
+        param_info = [
+            ParameterDisplayDescription(key="metric", value=f"Metric: {metric}"),
+            ParameterDisplayDescription(key="forecast_steps", value=f"Forecast Steps: {forecast_steps} months"),
+            ParameterDisplayDescription(key="start_date", value=f"Start Date: {start_date}"),
+            ParameterDisplayDescription(key="model", value=f"Model: {best_model.replace('_', ' ').title()}"),
+            ParameterDisplayDescription(key="accuracy", value=f"Accuracy: {model_results[best_model]['mape']:.1f}% MAPE")
+        ]
 
         # Create visualizations
         visualizations = create_visualizations(
@@ -182,13 +260,15 @@ def run_forecast_analysis(parameters: SkillInput) -> SkillOutput:
             best_model=best_model,
             patterns=patterns,
             model_results=model_results,
-            forecast_stats=calculate_forecast_stats(best_results)
+            forecast_stats=forecast_stats_dict,
+            detailed_insights=detailed_insights
         )
 
         return SkillOutput(
-            final_prompt=prompt,
+            final_prompt=max_response,
+            narrative=detailed_insights,
             visualizations=visualizations,
-            narrative=None
+            parameter_display_descriptions=param_info
         )
 
     except Exception as e:
@@ -582,7 +662,7 @@ def generate_prompt(metric, forecast_steps, best_model, patterns, model_results,
 
     return prompt
 
-def create_visualizations(output_df, metric, best_model, patterns, model_results, forecast_stats):
+def create_visualizations(output_df, metric, best_model, patterns, model_results, forecast_stats, detailed_insights):
     """
     Create visualizations for forecast results
     """
@@ -593,48 +673,39 @@ def create_visualizations(output_df, metric, best_model, patterns, model_results
     forecast = output_df[output_df['type'] == 'forecast'].copy()
 
     # Format dates for chart
-    historical['period_str'] = pd.to_datetime(historical['period']).dt.strftime('%Y-%m')
-    forecast['period_str'] = pd.to_datetime(forecast['period']).dt.strftime('%Y-%m')
+    historical['period_str'] = pd.to_datetime(historical['period']).dt.strftime('%b %Y')
+    forecast['period_str'] = pd.to_datetime(forecast['period']).dt.strftime('%b %Y')
 
     # Create series data for Highcharts
     historical_series = {
-        "name": "Historical",
-        "data": [{"x": i, "y": float(val), "name": date}
-                 for i, (val, date) in enumerate(zip(historical['actual'], historical['period_str']))],
-        "color": "#2E86C1",
-        "marker": {"enabled": True, "radius": 4}
+        "name": "Actual",
+        "data": [float(val) for val in historical['actual']],
+        "color": "#3498DB",
+        "lineWidth": 3,
+        "marker": {"enabled": True, "radius": 5, "symbol": "circle"}
     }
 
     forecast_series = {
         "name": "Forecast",
-        "data": [{"x": len(historical) + i, "y": float(val), "name": date}
-                 for i, (val, date) in enumerate(zip(forecast['forecast'], forecast['period_str']))],
+        "data": [None] * len(historical) + [float(val) for val in forecast['forecast']],
         "color": "#E74C3C",
-        "dashStyle": "Dash",
-        "marker": {"enabled": True, "radius": 4}
+        "dashStyle": "ShortDash",
+        "lineWidth": 3,
+        "marker": {"enabled": True, "radius": 5, "symbol": "diamond"}
     }
 
-    # Confidence interval series
-    lower_bound_series = {
-        "name": "Lower Bound",
-        "data": [{"x": len(historical) + i, "y": float(val)}
-                 for i, val in enumerate(forecast['lower_bound'])],
-        "color": "rgba(231, 76, 60, 0.2)",
+    # Confidence interval as area range
+    confidence_series = {
+        "name": "95% Confidence Interval",
+        "data": [None] * len(historical) + [[float(lower), float(upper)]
+                 for lower, upper in zip(forecast['lower_bound'], forecast['upper_bound'])],
+        "type": "arearange",
         "lineWidth": 0,
-        "marker": {"enabled": False},
-        "enableMouseTracking": False
-    }
-
-    upper_bound_series = {
-        "name": "Upper Bound",
-        "data": [{"x": len(historical) + i, "y": float(val)}
-                 for i, val in enumerate(forecast['upper_bound'])],
         "color": "rgba(231, 76, 60, 0.2)",
         "fillOpacity": 0.3,
-        "lineWidth": 0,
         "marker": {"enabled": False},
-        "type": "arearange",
-        "linkedTo": ":previous"
+        "enableMouseTracking": True,
+        "zIndex": 0
     }
 
     # All categories for x-axis
@@ -644,72 +715,89 @@ def create_visualizations(output_df, metric, best_model, patterns, model_results
     chart_config = {
         "type": "highcharts",
         "config": {
-            "chart": {"type": "line", "height": 400},
-            "title": {"text": f"{metric.title()} Forecast - {best_model.replace('_', ' ').title()} Model"},
+            "chart": {
+                "type": "line",
+                "height": 500,
+                "backgroundColor": "#FAFAFA",
+                "style": {"fontFamily": "Arial, sans-serif"}
+            },
+            "title": {
+                "text": f"{metric.title()} Forecast",
+                "style": {"fontSize": "20px", "fontWeight": "bold", "color": "#2C3E50"}
+            },
+            "subtitle": {
+                "text": f"Model: {best_model.replace('_', ' ').title()} | Accuracy: {model_results[best_model]['mape']:.1f}% MAPE",
+                "style": {"fontSize": "14px", "color": "#7F8C8D"}
+            },
             "xAxis": {
                 "categories": all_categories,
-                "title": {"text": "Period"}
+                "title": {"text": "Time Period", "style": {"fontWeight": "bold"}},
+                "gridLineWidth": 1,
+                "gridLineColor": "#E0E0E0",
+                "labels": {"rotation": -45, "style": {"fontSize": "11px"}}
             },
             "yAxis": {
-                "title": {"text": metric.title()},
-                "labels": {"format": "{value:,.0f}"}
+                "title": {"text": f"{metric.title()} ($)", "style": {"fontWeight": "bold"}},
+                "labels": {"format": "${value:,.0f}"},
+                "gridLineColor": "#E0E0E0"
             },
             "tooltip": {
                 "shared": True,
-                "valueDecimals": 0,
-                "valuePrefix": "$"
+                "crosshairs": True,
+                "backgroundColor": "#FFFFFF",
+                "borderColor": "#CCCCCC",
+                "borderRadius": 8,
+                "shadow": True,
+                "useHTML": True,
+                "headerFormat": "<b>{point.key}</b><br/>",
+                "pointFormat": "<span style=\"color:{series.color}\">\u25CF</span> {series.name}: <b>${point.y:,.0f}</b><br/>"
             },
-            "series": [historical_series, forecast_series],
+            "legend": {
+                "enabled": True,
+                "align": "center",
+                "verticalAlign": "bottom",
+                "borderWidth": 0
+            },
             "plotOptions": {
                 "line": {
                     "marker": {"enabled": True}
+                },
+                "series": {
+                    "animation": True
                 }
-            }
+            },
+            "series": [confidence_series, historical_series, forecast_series],
+            "credits": {"enabled": False}
         }
     }
 
-    # Create layout with chart
+    # Create layout with chart and insights
     layout = {
         "layoutJson": {
             "type": "Document",
             "style": {
                 "backgroundColor": "#ffffff",
-                "padding": "20px"
+                "padding": "20px",
+                "fontFamily": "Arial, sans-serif"
             },
             "children": [
                 {
-                    "type": "Header",
-                    "text": f"Forecast Analysis: {metric.title()}",
-                    "style": {
-                        "fontSize": "24px",
-                        "fontWeight": "bold",
-                        "marginBottom": "20px",
-                        "color": "#2C3E50"
-                    }
-                },
-                {
                     "type": "HighchartsChart",
-                    "options": chart_config["config"]
+                    "options": chart_config["config"],
+                    "style": {"marginBottom": "30px"}
                 },
                 {
-                    "type": "Paragraph",
-                    "text": f"**Model Used:** {best_model.replace('_', ' ').title()}",
-                    "style": {"marginTop": "20px", "fontSize": "14px"}
-                },
-                {
-                    "type": "Paragraph",
-                    "text": f"**Model Accuracy:** {model_results[best_model]['mape']:.1f}% MAPE",
-                    "style": {"fontSize": "14px"}
-                },
-                {
-                    "type": "Paragraph",
-                    "text": f"**Trend:** {patterns['trend_direction'].title()} (R² = {patterns['trend_r2']:.3f})",
-                    "style": {"fontSize": "14px"}
-                },
-                {
-                    "type": "Paragraph",
-                    "text": f"**Total Forecasted:** ${forecast_stats['total']:,.0f}",
-                    "style": {"fontSize": "14px", "fontWeight": "bold"}
+                    "type": "Markdown",
+                    "text": detailed_insights,
+                    "style": {
+                        "fontSize": "14px",
+                        "lineHeight": "1.6",
+                        "color": "#2C3E50",
+                        "backgroundColor": "#F8F9FA",
+                        "padding": "20px",
+                        "borderRadius": "8px",
+                        "border": "1px solid #E0E0E0"
+                    }
                 }
             ]
         },
@@ -717,7 +805,7 @@ def create_visualizations(output_df, metric, best_model, patterns, model_results
     }
 
     rendered = wire_layout(layout, {})
-    visualizations.append(SkillVisualization(title="Forecast", layout=rendered))
+    visualizations.append(SkillVisualization(title="Forecast Analysis", layout=rendered))
 
     return visualizations
 
