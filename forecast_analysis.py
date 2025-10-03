@@ -318,11 +318,18 @@ def fetch_data(metric, start_date, other_filters):
     database_id = os.getenv('DATABASE_ID', DATABASE_ID)
     print(f"DEBUG: Using DATABASE_ID: {database_id}")
 
+    # Determine aggregation method based on metric type
+    # Price/rate metrics use AVG, all others use SUM
+    price_metrics = ['unitprice', 'price', 'rate', 'cost', 'margin', 'discount']
+    agg_method = 'AVG' if any(price_term in metric.lower() for price_term in price_metrics) else 'SUM'
+
+    print(f"DEBUG: Using {agg_method} aggregation for metric: {metric}")
+
     # Build SQL query to get time series data for forecasting
     sql_query = f"""
     SELECT
         DATE_TRUNC('month', InvoiceDate) as invoice_month,
-        SUM({metric}) as {metric}
+        {agg_method}({metric}) as {metric}
     FROM read_parquet('Top20_SKUs_2021_Present.parquet')
     WHERE 1=1
     """
