@@ -327,16 +327,17 @@ def fetch_data(metric, start_date, other_filters):
 
                     if isinstance(values, list):
                         if operator == '=' or operator == 'IN':
-                            values_str = "', '".join(str(v) for v in values)
-                            sql_query += f" AND {dimension} IN ('{values_str}')"
-                            print(f"DEBUG: Added filter: {dimension} IN ({values})")
+                            # Make filter case-insensitive for better matching
+                            values_str = "', '".join(str(v).upper() for v in values)
+                            sql_query += f" AND UPPER({dimension}) IN ('{values_str}')"
+                            print(f"DEBUG: Added filter: UPPER({dimension}) IN ({[v.upper() for v in values]})")
                         else:
                             # Handle other operators if needed
-                            sql_query += f" AND {dimension} {operator} '{values[0]}'"
-                            print(f"DEBUG: Added filter: {dimension} {operator} {values[0]}")
+                            sql_query += f" AND UPPER({dimension}) {operator} '{str(values[0]).upper()}'"
+                            print(f"DEBUG: Added filter: UPPER({dimension}) {operator} {values[0].upper()}")
                     else:
-                        sql_query += f" AND {dimension} {operator} '{values}'"
-                        print(f"DEBUG: Added filter: {dimension} {operator} {values}")
+                        sql_query += f" AND UPPER({dimension}) {operator} '{str(values).upper()}'"
+                        print(f"DEBUG: Added filter: UPPER({dimension}) {operator} {values.upper()}")
                 else:
                     # Fallback for other dict formats
                     for key, value in filter_item.items():
