@@ -466,19 +466,25 @@ def run_models(df, periods, confidence_level):
 
     models = {}
 
+    print(f"DEBUG: Training models with {len(train)} training points, {len(validate)} validation points")
+
     # 1. Prophet Model
     try:
+        print(f"DEBUG: Attempting Prophet model...")
         # Prepare data for Prophet
         prophet_df = train[['period', 'value']].rename(columns={'period': 'ds', 'value': 'y'})
 
         # Create and fit model
         model = Prophet(
-            yearly_seasonality=True,
+            yearly_seasonality=True if len(train) >= 24 else False,
             weekly_seasonality=False,
             daily_seasonality=False,
-            interval_width=confidence_level
+            interval_width=confidence_level,
+            changepoint_prior_scale=0.05  # More conservative
         )
+        print(f"DEBUG: Prophet data shape: {prophet_df.shape}, date range: {prophet_df['ds'].min()} to {prophet_df['ds'].max()}")
         model.fit(prophet_df)
+        print(f"DEBUG: Prophet model fitted successfully")
 
         # Validate
         future_val = pd.DataFrame({'ds': validate['period']})
@@ -507,27 +513,35 @@ def run_models(df, periods, confidence_level):
             'score': mae
         }
     except Exception as e:
-        print(f"DEBUG: Prophet model failed: {e}")
+        print(f"DEBUG: Prophet model FAILED: {type(e).__name__}: {str(e)}")
+        import traceback
+        print(f"DEBUG: Prophet traceback: {traceback.format_exc()}")
 
     # 2. Holt-Winters Exponential Smoothing
     try:
+        print(f"DEBUG: Attempting Holt-Winters model...")
         # Determine seasonality
         seasonal_periods = 12 if len(train) >= 24 else None
+        print(f"DEBUG: Holt-Winters seasonal_periods: {seasonal_periods}")
 
         if seasonal_periods:
             model = ExponentialSmoothing(
                 train['value'],
                 seasonal_periods=seasonal_periods,
                 trend='add',
-                seasonal='add'
+                seasonal='add',
+                initialization_method='estimated'
             )
         else:
             model = ExponentialSmoothing(
                 train['value'],
-                trend='add'
+                trend='add',
+                initialization_method='estimated'
             )
 
+        print(f"DEBUG: Holt-Winters model created, fitting...")
         fitted_model = model.fit()
+        print(f"DEBUG: Holt-Winters fitted successfully")
 
         # Validate
         val_pred = fitted_model.forecast(len(validate))
@@ -551,10 +565,13 @@ def run_models(df, periods, confidence_level):
             'score': mae
         }
     except Exception as e:
-        print(f"DEBUG: Holt-Winters model failed: {e}")
+        print(f"DEBUG: Holt-Winters model FAILED: {type(e).__name__}: {str(e)}")
+        import traceback
+        print(f"DEBUG: Holt-Winters traceback: {traceback.format_exc()}")
 
     # 3. Simple Moving Average (fallback)
     try:
+        print(f"DEBUG: Attempting Moving Average model...")
         window = min(3, len(train) // 4)
         ma_forecast = []
         recent_values = list(train['value'].values[-window:])
@@ -585,9 +602,11 @@ def run_models(df, periods, confidence_level):
             'mape': mape,
             'score': mae
         }
+        print(f"DEBUG: Moving Average model fitted successfully")
     except Exception as e:
-        print(f"DEBUG: Moving Average model failed: {e}")
+        print(f"DEBUG: Moving Average model FAILED: {type(e).__name__}: {str(e)}")
 
+    print(f"DEBUG: Models completed. Available models: {list(models.keys())}")
     return models
 
 def select_best_model(model_results):
