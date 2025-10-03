@@ -12,9 +12,7 @@ warnings.filterwarnings('ignore')
 
 from skill_framework import skill, SkillParameter, SkillInput, SkillOutput
 from answer_rocket import AnswerRocketClient
-
-# Use the correct DATABASE_ID for pasta dataset
-DATABASE_ID = "7a30e8fc-e7aa-4829-9020-fa94572244da"
+from ar_analytics.helpers.utils import get_dataset_id
 
 
 @skill(
@@ -190,6 +188,8 @@ def fetch_data(metric, start_date, other_filters):
     """
     Fetch data using SQL query
     """
+    import os
+
     print(f"DEBUG: fetch_data called with metric={metric}, start_date={start_date}, filters={other_filters}")
 
     # Create AnswerRocket client
@@ -199,6 +199,15 @@ def fetch_data(metric, start_date, other_filters):
     except Exception as e:
         print(f"DEBUG: Failed to create AnswerRocketClient: {e}")
         return None
+
+    # Get DATABASE_ID from environment
+    database_id = os.getenv('DATABASE_ID')
+    if not database_id:
+        print(f"DEBUG: DATABASE_ID not found in environment")
+        # Fall back to get_dataset_id
+        database_id = get_dataset_id()
+
+    print(f"DEBUG: Using DATABASE_ID: {database_id}")
 
     # Build SQL query to get time series data for forecasting
     sql_query = f"""
@@ -235,10 +244,8 @@ def fetch_data(metric, start_date, other_filters):
 
     try:
         # Execute SQL query using AnswerRocketClient
-        print(f"DEBUG: About to execute SQL using AnswerRocketClient")
-
-        # Execute SQL query using AnswerRocketClient
-        result = arc.data.execute_sql_query(DATABASE_ID, sql_query, 1000)
+        print(f"DEBUG: About to execute SQL using database_id: {database_id}")
+        result = arc.data.execute_sql_query(database_id, sql_query, 1000)
         print(f"DEBUG: SQL execution result - success: {result.success if hasattr(result, 'success') else 'No success attr'}")
 
         if hasattr(result, 'success') and result.success and hasattr(result, 'df'):
@@ -418,6 +425,11 @@ def prepare_output(historical_df, forecast_results, model_name, patterns, all_mo
     """
     # Historical data
     hist_df = historical_df.copy()
+
+    # Convert period to datetime if it's not already
+    if not pd.api.types.is_datetime64_any_dtype(hist_df['period']):
+        hist_df['period'] = pd.to_datetime(hist_df['period'])
+
     hist_df['type'] = 'historical'
     hist_df['forecast'] = np.nan
     hist_df['lower_bound'] = np.nan
@@ -502,9 +514,27 @@ def generate_prompt(metric, forecast_steps, best_model, patterns, model_results,
 
 
 if __name__ == '__main__':
+    # Load environment variables for local testing
+    from dotenv import load_dotenv
+    load_dotenv('/Users/mitchelltravis/cursor/.env')
+
     skill_input: SkillInput = forecast_analysis.create_input(arguments={
-        'metric': "volume",
+        'metric': "sales",
         'forecast_steps': 6,
         'start_date': "2022-01-01",
-        'other_filters': [{"dim": "manufacturer", "op": "=", "val": ["barilla"]}]
+        'other_filters': None
     })
+
+    print("=" * 80)
+    print("TESTING FORECAST ANALYSIS SKILL")
+    print("=" * 80)
+
+    result = forecast_analysis(skill_input)
+
+    print("\n" + "=" * 80)
+    print("RESULT:")
+    print("=" * 80)
+    print(f"Final Prompt: {result.final_prompt}")
+    if hasattr(result, 'warnings') and result.warnings:
+        print(f"Warnings: {result.warnings}")
+    print("=" * 80)
