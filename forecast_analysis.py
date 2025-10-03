@@ -276,7 +276,8 @@ def run_forecast_analysis(parameters: SkillInput) -> SkillOutput:
             patterns=patterns,
             model_results=model_results,
             forecast_stats=forecast_stats_dict,
-            other_filters=other_filters
+            other_filters=other_filters,
+            confidence_level=confidence_level
         )
 
         return SkillOutput(
@@ -717,11 +718,14 @@ def generate_prompt(metric, forecast_steps, best_model, patterns, model_results,
 
     return prompt
 
-def create_visualizations(output_df, metric, best_model, patterns, model_results, forecast_stats, other_filters=None):
+def create_visualizations(output_df, metric, best_model, patterns, model_results, forecast_stats, other_filters=None, confidence_level=0.95):
     """
     Create visualizations for forecast results (chart only - insights go in narrative)
     """
     visualizations = []
+
+    # Convert confidence level to percentage for display
+    confidence_pct = int(confidence_level * 100)
 
     # Prepare data for chart
     historical = output_df[output_df['type'] == 'historical'].copy()
@@ -765,9 +769,9 @@ def create_visualizations(output_df, metric, best_model, patterns, model_results
         "marker": {"enabled": True, "radius": 5, "symbol": "diamond"}
     }
 
-    # Confidence interval as area range (shows uncertainty range - 95% probability actual values will fall within this range)
+    # Confidence interval as area range (shows uncertainty range)
     confidence_series = {
-        "name": "95% Confidence Range",
+        "name": f"{confidence_pct}% Confidence Range",
         "data": [None] * len(historical) + [[float(lower), float(upper)]
                  for lower, upper in zip(forecast['lower_bound'], forecast['upper_bound'])],
         "type": "arearange",
@@ -778,7 +782,7 @@ def create_visualizations(output_df, metric, best_model, patterns, model_results
         "enableMouseTracking": True,
         "zIndex": 0,
         "tooltip": {
-            "pointFormat": "<span style=\"color:{series.color}\">\u25CF</span> {series.name}: <b>${point.low:,.0f} - ${point.high:,.0f}</b><br/><span style=\"font-size:11px;color:#7F8C8D\">95% probability actual values fall within this range</span><br/>"
+            "pointFormat": f"<span style=\"color:{{series.color}}\">\u25CF</span> {{series.name}}: <b>${{point.low:,.0f}} - ${{point.high:,.0f}}</b><br/><span style=\"font-size:11px;color:#7F8C8D\">{confidence_pct}% probability actual values fall within this range</span><br/>"
         }
     }
 
