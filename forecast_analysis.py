@@ -253,15 +253,14 @@ def run_forecast_analysis(parameters: SkillInput) -> SkillOutput:
             ParameterDisplayDescription(key="accuracy", value=f"Accuracy: {model_results[best_model]['mape']:.1f}% MAPE")
         ]
 
-        # Create visualizations
+        # Create visualizations (without insights - they go in narrative)
         visualizations = create_visualizations(
             output_df=output_df,
             metric=metric,
             best_model=best_model,
             patterns=patterns,
             model_results=model_results,
-            forecast_stats=forecast_stats_dict,
-            detailed_insights=detailed_insights
+            forecast_stats=forecast_stats_dict
         )
 
         return SkillOutput(
@@ -662,9 +661,9 @@ def generate_prompt(metric, forecast_steps, best_model, patterns, model_results,
 
     return prompt
 
-def create_visualizations(output_df, metric, best_model, patterns, model_results, forecast_stats, detailed_insights):
+def create_visualizations(output_df, metric, best_model, patterns, model_results, forecast_stats):
     """
-    Create visualizations for forecast results
+    Create visualizations for forecast results (chart only - insights go in narrative)
     """
     visualizations = []
 
@@ -771,7 +770,7 @@ def create_visualizations(output_df, metric, best_model, patterns, model_results
         }
     }
 
-    # Create layout with chart and insights
+    # Create layout with chart only (insights go in narrative section)
     layout = {
         "layoutJson": {
             "type": "Document",
@@ -783,21 +782,7 @@ def create_visualizations(output_df, metric, best_model, patterns, model_results
             "children": [
                 {
                     "type": "HighchartsChart",
-                    "options": chart_config["config"],
-                    "style": {"marginBottom": "30px"}
-                },
-                {
-                    "type": "Markdown",
-                    "text": detailed_insights,
-                    "style": {
-                        "fontSize": "14px",
-                        "lineHeight": "1.6",
-                        "color": "#2C3E50",
-                        "backgroundColor": "#F8F9FA",
-                        "padding": "20px",
-                        "borderRadius": "8px",
-                        "border": "1px solid #E0E0E0"
-                    }
+                    "options": chart_config["config"]
                 }
             ]
         },
@@ -805,7 +790,7 @@ def create_visualizations(output_df, metric, best_model, patterns, model_results
     }
 
     rendered = wire_layout(layout, {})
-    visualizations.append(SkillVisualization(title="Forecast Analysis", layout=rendered))
+    visualizations.append(SkillVisualization(title="Forecast Chart", layout=rendered))
 
     return visualizations
 
