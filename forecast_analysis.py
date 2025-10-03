@@ -319,13 +319,33 @@ def fetch_data(metric, start_date, other_filters):
     if other_filters:
         for filter_item in other_filters:
             if isinstance(filter_item, dict):
-                for key, value in filter_item.items():
-                    if isinstance(value, list):
-                        values_str = "', '".join(str(v) for v in value)
-                        sql_query += f" AND {key} IN ('{values_str}')"
+                # Handle AnswerRocket filter format: {'dim': 'brand', 'op': '=', 'val': ['barilla']}
+                if 'dim' in filter_item and 'val' in filter_item:
+                    dimension = filter_item['dim']
+                    values = filter_item['val']
+                    operator = filter_item.get('op', '=')
+
+                    if isinstance(values, list):
+                        if operator == '=' or operator == 'IN':
+                            values_str = "', '".join(str(v) for v in values)
+                            sql_query += f" AND {dimension} IN ('{values_str}')"
+                            print(f"DEBUG: Added filter: {dimension} IN ({values})")
+                        else:
+                            # Handle other operators if needed
+                            sql_query += f" AND {dimension} {operator} '{values[0]}'"
+                            print(f"DEBUG: Added filter: {dimension} {operator} {values[0]}")
                     else:
-                        sql_query += f" AND {key} = '{value}'"
-                    print(f"DEBUG: Added filter: {key} = {value}")
+                        sql_query += f" AND {dimension} {operator} '{values}'"
+                        print(f"DEBUG: Added filter: {dimension} {operator} {values}")
+                else:
+                    # Fallback for other dict formats
+                    for key, value in filter_item.items():
+                        if isinstance(value, list):
+                            values_str = "', '".join(str(v) for v in value)
+                            sql_query += f" AND {key} IN ('{values_str}')"
+                        else:
+                            sql_query += f" AND {key} = '{value}'"
+                        print(f"DEBUG: Added filter: {key} = {value}")
 
     sql_query += f"""
     GROUP BY month_new
