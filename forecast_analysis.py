@@ -776,6 +776,16 @@ def create_visualizations(output_df, metric, best_model, patterns, model_results
         "marker": {"enabled": True, "radius": 5, "symbol": "diamond"}
     }
 
+    # Determine format for confidence interval tooltip (define before using)
+    if max_value < 10:
+        ci_format = "${point.low:,.2f} - ${point.high:,.2f}"
+    elif max_value < 100:
+        ci_format = "${point.low:,.2f} - ${point.high:,.2f}"
+    elif max_value < 1000:
+        ci_format = "${point.low:,.1f} - ${point.high:,.1f}"
+    else:
+        ci_format = "${point.low:,.0f} - ${point.high:,.0f}"
+
     # Confidence interval as area range (shows uncertainty range)
     confidence_series = {
         "name": f"{confidence_pct}% Confidence Range",
@@ -789,12 +799,31 @@ def create_visualizations(output_df, metric, best_model, patterns, model_results
         "enableMouseTracking": True,
         "zIndex": 0,
         "tooltip": {
-            "pointFormat": f"<span style=\"color:{{series.color}}\">\u25CF</span> {{series.name}}: <b>${{point.low:,.0f}} - ${{point.high:,.0f}}</b><br/><span style=\"font-size:11px;color:#7F8C8D\">{confidence_pct}% probability actual values fall within this range</span><br/>"
+            "pointFormat": f"<span style=\"color:{{series.color}}\">\u25CF</span> {{series.name}}: <b>{ci_format}</b><br/><span style=\"font-size:11px;color:#7F8C8D\">{confidence_pct}% probability actual values fall within this range</span><br/>"
         }
     }
 
     # All categories for x-axis
     all_categories = list(historical['period_str']) + list(forecast['period_str'])
+
+    # Determine decimal places based on data magnitude
+    # Get max value to determine if we need decimals
+    all_values = list(historical['actual']) + list(forecast['forecast'])
+    max_value = max(all_values)
+
+    # Use decimals for small numbers (< 100), no decimals for large numbers
+    if max_value < 10:
+        y_format = "${value:,.2f}"  # 2 decimals for very small numbers (e.g., $1.23)
+        tooltip_format = "${point.y:,.2f}"
+    elif max_value < 100:
+        y_format = "${value:,.2f}"  # 2 decimals for small numbers (e.g., $12.34)
+        tooltip_format = "${point.y:,.2f}"
+    elif max_value < 1000:
+        y_format = "${value:,.1f}"  # 1 decimal for medium numbers (e.g., $123.4)
+        tooltip_format = "${point.y:,.1f}"
+    else:
+        y_format = "${value:,.0f}"  # No decimals for large numbers (e.g., $1,234)
+        tooltip_format = "${point.y:,.0f}"
 
     # Create Highcharts configuration
     chart_config = {
@@ -823,7 +852,7 @@ def create_visualizations(output_df, metric, best_model, patterns, model_results
             },
             "yAxis": {
                 "title": {"text": f"{metric.title()} ($)", "style": {"fontWeight": "bold"}},
-                "labels": {"format": "${value:,.0f}"},
+                "labels": {"format": y_format},
                 "gridLineColor": "#E0E0E0"
             },
             "tooltip": {
@@ -835,7 +864,7 @@ def create_visualizations(output_df, metric, best_model, patterns, model_results
                 "shadow": True,
                 "useHTML": True,
                 "headerFormat": "<b>{point.key}</b><br/>",
-                "pointFormat": "<span style=\"color:{series.color}\">\u25CF</span> {series.name}: <b>${point.y:,.0f}</b><br/>"
+                "pointFormat": f"<span style=\"color:{{series.color}}\">\u25CF</span> {{series.name}}: <b>{tooltip_format}</b><br/>"
             },
             "legend": {
                 "enabled": True,
