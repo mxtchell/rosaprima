@@ -339,6 +339,10 @@ def fetch_data(metric, start_date, other_filters):
         sql_query += f" AND InvoiceDate >= '{start_date}'"
         print(f"DEBUG: Added date filter: {start_date}")
 
+    # Hardcode end date to exclude October 2025 onwards (forecast always starts October 2025)
+    sql_query += f" AND InvoiceDate < '2025-10-01'"
+    print(f"DEBUG: Added end date filter: < 2025-10-01")
+
     # Add other filters
     if other_filters:
         for filter_item in other_filters:
@@ -406,6 +410,11 @@ def fetch_data(metric, start_date, other_filters):
             if metric in raw_df.columns:
                 raw_df = raw_df.rename(columns={metric: 'value'})
                 print(f"DEBUG: Renamed {metric} to value")
+
+            # Ensure value column is float for numpy operations
+            if 'value' in raw_df.columns:
+                raw_df['value'] = raw_df['value'].astype(float)
+                print(f"DEBUG: Converted value column to float")
 
             print(f"DEBUG: Final columns: {list(raw_df.columns)}")
             print(f"DEBUG: Final shape: {raw_df.shape}")
