@@ -68,10 +68,23 @@ DATASET_ID = "e5e7c8a3-a9ff-47d8-9b57-cda29401e625"
             name="insight_prompt",
             parameter_type="prompt",
             description="Prompt being used for detailed skill insights.",
-            default_value="""Analyze the forecast results and provide comprehensive insights in the following format:
+            default_value="""Analyze the forecast results and provide comprehensive insights. The facts contain 'is_price_metric' which tells you if this is a price/rate metric (averaging) vs volume metric (summing).
+
+If is_price_metric is true, focus on:
+- Price trends, changes, and volatility
+- Starting vs ending prices
+- Price range expectations
+- Do NOT mention "total forecasted value" or sum totals
+
+If is_price_metric is false, focus on:
+- Total volume/sales forecasted
+- Average per period
+- Growth in quantities/revenue
+
+Format your response as:
 
 ## Forecast Summary
-[Brief overview of forecast period, total forecasted value, and model selected]
+[Brief overview of forecast period and model selected. For prices: mention forecasted price range and average. For volumes: mention total forecasted value and average per period]
 
 ## Why the {{model_name}} Model Was Selected
 [Explain why this model outperformed others based on accuracy metrics]
@@ -83,7 +96,7 @@ DATASET_ID = "e5e7c8a3-a9ff-47d8-9b57-cda29401e625"
 [Explain why this model is appropriate for the data patterns observed]
 
 ## Key Trends and Expectations
-**Trend:** [Describe the overall trend direction and strength]
+**Trend:** [Describe the overall trend direction and strength. For prices: describe price movement. For volumes: describe quantity/revenue growth]
 
 **Seasonality:** [Discuss any seasonal patterns detected]
 
@@ -93,11 +106,11 @@ DATASET_ID = "e5e7c8a3-a9ff-47d8-9b57-cda29401e625"
 **Confidence Level:** [High/Medium/Low based on MAPE]
 
 **Risks to Watch For:**
-- [List key risks like external disruptions, demand changes, etc.]
+- [List key risks - for prices: pricing pressure, competition. For volumes: demand shifts, market changes]
 
 ## Strategic Recommendations
-1. **[Recommendation category]:** [Detailed recommendation]
-2. **[Recommendation category]:** [Detailed recommendation]
+1. **[Recommendation category]:** [Detailed recommendation appropriate for the metric type]
+2. **[Recommendation category]:** [Detailed recommendation appropriate for the metric type]
 
 Facts:
 {{facts}}"""
@@ -202,30 +215,66 @@ def run_forecast_analysis(parameters: SkillInput) -> SkillOutput:
 
         # Prepare facts for prompts
         forecast_stats_dict = calculate_forecast_stats(best_results)
-        facts = {
-            'metric': metric,
-            'forecast_steps': forecast_steps,
-            'model_name': best_model.replace('_', ' ').title(),
-            'total_forecasted': f"${forecast_stats_dict['total']:,.0f}",
-            'average_per_period': f"${forecast_stats_dict['average']:,.0f}",
-            'growth_pct': f"{forecast_stats_dict['growth']:.1f}%",
-            'trend_direction': patterns['trend_direction'],
-            'trend_r2': f"{patterns['trend_r2']:.3f}",
-            'volatility': patterns['volatility_level'],
-            'has_seasonality': 'Yes' if patterns['has_seasonality'] else 'No',
-            'data_points': patterns['data_points'],
-            'model_accuracy_mape': f"{model_results[best_model]['mape']:.1f}%",
-            'model_accuracy_mae': f"{model_results[best_model]['mae']:,.0f}",
-            'model_comparison': [
-                {
-                    'name': name.replace('_', ' ').title(),
-                    'mae': f"{results['mae']:,.0f}",
-                    'mape': f"{results['mape']:.1f}%",
-                    'selected': name == best_model
-                }
-                for name, results in model_results.items()
-            ]
-        }
+
+        # Determine if this is a price metric (uses AVG aggregation)
+        price_metrics = ['unitprice', 'price', 'rate', 'cost', 'margin', 'discount']
+        is_price_metric = any(price_term in metric.lower() for price_term in price_metrics)
+
+        # Format facts differently for price vs volume metrics
+        if is_price_metric:
+            facts = {
+                'metric': metric,
+                'forecast_steps': forecast_steps,
+                'model_name': best_model.replace('_', ' ').title(),
+                'is_price_metric': True,
+                'forecasted_range': f"${forecast_stats_dict['min']:,.2f} to ${forecast_stats_dict['max']:,.2f}",
+                'average_forecasted_price': f"${forecast_stats_dict['average']:,.2f}",
+                'starting_price': f"${best_results['forecast'][0]:,.2f}",
+                'ending_price': f"${best_results['forecast'][-1]:,.2f}",
+                'price_change': f"{forecast_stats_dict['growth']:.1f}%",
+                'trend_direction': patterns['trend_direction'],
+                'trend_r2': f"{patterns['trend_r2']:.3f}",
+                'volatility': patterns['volatility_level'],
+                'has_seasonality': 'Yes' if patterns['has_seasonality'] else 'No',
+                'data_points': patterns['data_points'],
+                'model_accuracy_mape': f"{model_results[best_model]['mape']:.1f}%",
+                'model_accuracy_mae': f"${model_results[best_model]['mae']:,.2f}",
+                'model_comparison': [
+                    {
+                        'name': name.replace('_', ' ').title(),
+                        'mae': f"${results['mae']:,.2f}",
+                        'mape': f"{results['mape']:.1f}%",
+                        'selected': name == best_model
+                    }
+                    for name, results in model_results.items()
+                ]
+            }
+        else:
+            facts = {
+                'metric': metric,
+                'forecast_steps': forecast_steps,
+                'model_name': best_model.replace('_', ' ').title(),
+                'is_price_metric': False,
+                'total_forecasted': f"${forecast_stats_dict['total']:,.0f}",
+                'average_per_period': f"${forecast_stats_dict['average']:,.0f}",
+                'growth_pct': f"{forecast_stats_dict['growth']:.1f}%",
+                'trend_direction': patterns['trend_direction'],
+                'trend_r2': f"{patterns['trend_r2']:.3f}",
+                'volatility': patterns['volatility_level'],
+                'has_seasonality': 'Yes' if patterns['has_seasonality'] else 'No',
+                'data_points': patterns['data_points'],
+                'model_accuracy_mape': f"{model_results[best_model]['mape']:.1f}%",
+                'model_accuracy_mae': f"{model_results[best_model]['mae']:,.0f}",
+                'model_comparison': [
+                    {
+                        'name': name.replace('_', ' ').title(),
+                        'mae': f"{results['mae']:,.0f}",
+                        'mape': f"{results['mape']:.1f}%",
+                        'selected': name == best_model
+                    }
+                    for name, results in model_results.items()
+                ]
+            }
 
         # Generate brief Max response
         max_template = jinja2.Template(parameters.arguments.max_prompt)
