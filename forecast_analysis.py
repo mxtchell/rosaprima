@@ -330,7 +330,7 @@ def fetch_data(metric, start_date, other_filters):
     SELECT
         DATE_TRUNC('month', InvoiceDate) as invoice_month,
         {agg_method}({metric}) as {metric}
-    FROM read_parquet('Top20_SKUs_2021_Present.parquet')
+    FROM read_parquet('Top20_SKUs_2021_Present_V2.parquet')
     WHERE 1=1
     """
 
